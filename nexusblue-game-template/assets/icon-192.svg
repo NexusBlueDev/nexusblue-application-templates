@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <radialGradient id="orb" cx="40%" cy="35%" r="55%">
+      <stop offset="0%" stop-color="#66D9FF"/>
+      <stop offset="50%" stop-color="#007BFF"/>
+      <stop offset="100%" stop-color="#001F3F"/>
+    </radialGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="192" height="192" rx="40" fill="#001F3F"/>
+  <circle cx="96" cy="88" r="50" fill="url(#orb)" stroke="#00FFFF" stroke-width="3" filter="url(#glow)"/>
+  <text x="96" y="160" text-anchor="middle" fill="#E0F7FF" font-family="Arial,sans-serif" font-size="20" font-weight="bold">JR. JARVIS</text>
+</svg>

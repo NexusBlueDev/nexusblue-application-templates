@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<!--
+  NexusBlue Game Template — index.html
+  Replace all [PLACEHOLDER] values before building.
+  This template is for DISCOVERY mode apps. For GUESSING mode, replace
+  screen-match with a screen-guess + screen-result pair.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>[APP NAME] — [TAGLINE]</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#46b3e6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="[APP DESCRIPTION]">
+  <link rel="stylesheet" href="css/styles.css?v=1">
+</head>
+<body>
+
+  <!-- ========== Welcome Screen ========== -->
+  <div id="screen-welcome" class="screen">
+    <img src="logo/NexusBlueLogo2white_backandblue_trans.png" alt="NexusBlue" class="nb-logo">
+    <h1 class="title gradient-text">[APP NAME]</h1>
+    <p class="tagline">[TAGLINE]</p>
+    <div class="orb-wrapper" id="orb-welcome">
+      <div class="orb-glow"></div>
+      <div class="orb-ring"></div>
+      <div class="orb-ring orb-ring-2"></div>
+      <div class="orb-core"></div>
+      <div class="orb-pulse-ring"></div>
+      <div class="orb-pulse-ring orb-pulse-ring-2"></div>
+    </div>
+
+    <div class="glass-card how-to-play">
+      <h2 class="how-to-play-title">How It Works</h2>
+      <div class="steps">
+        <!-- DISCOVERY mode steps: -->
+        <div class="step"><span class="step-icon">👇</span><span class="step-text">Browse the [ITEMS] below — click any card to learn more!</span></div>
+        <div class="step"><span class="step-icon">🧠</span><span class="step-text">Answer a few questions about what you enjoy</span></div>
+        <div class="step"><span class="step-icon">🚀</span><span class="step-text">Discover the [ITEM] that matches YOU!</span></div>
+
+        <!-- GUESSING mode steps (replace above with these):
+        <div class="step"><span class="step-icon">🤔</span><span class="step-text">Think of a [ITEM] — don't say it out loud!</span></div>
+        <div class="step"><span class="step-icon">🧠</span><span class="step-text">Answer my yes/no questions honestly</span></div>
+        <div class="step"><span class="step-icon">🎯</span><span class="step-text">I'll guess your [ITEM] — can I figure it out?</span></div>
+        -->
+      </div>
+    </div>
+
+    <!-- Item gallery — populated by js/ui.js buildItemGallery() -->
+    <div id="item-gallery" class="character-gallery"></div>
+
+    <button id="btn-start" class="btn btn-start btn-glow">[START BUTTON TEXT]</button>
+  </div>
+
+  <!-- ========== Question Screen ========== -->
+  <div id="screen-game" class="screen hidden">
+    <div class="game-header">
+      <div class="orb-wrapper orb-wrapper-small" id="orb-game">
+        <div class="orb-glow"></div>
+        <div class="orb-ring"></div>
+        <div class="orb-ring orb-ring-2"></div>
+        <div class="orb-core"></div>
+        <div class="orb-pulse-ring"></div>
+        <div class="orb-pulse-ring orb-pulse-ring-2"></div>
+      </div>
+      <div class="game-header-info">
+        <span id="question-counter" class="question-counter"></span>
+        <div id="progress-dots" class="progress-dots"></div>
+      </div>
+    </div>
+
+    <div class="glass-card question-card">
+      <p id="question-text" class="question"></p>
+      <p id="question-hint" class="question-hint"></p>
+    </div>
+
+    <div class="answer-buttons">
+      <button id="btn-yes" class="btn btn-yes">Yes!</button>
+      <button id="btn-no" class="btn btn-no">No!</button>
+      <button id="btn-probably" class="btn btn-probably">Kind of!</button>
+      <button id="btn-probably-not" class="btn btn-probnot">Not Really</button>
+      <button id="btn-uncertain" class="btn btn-uncertain">Not Sure</button>
+    </div>
+
+    <p class="input-hint">Answer honestly — there's no wrong answer!</p>
+    <button class="btn-restart-small btn-restart-link">Start Over</button>
+  </div>
+
+  <!-- ========== DISCOVERY MODE: Match Screen ========== -->
+  <!-- Remove this screen for GUESSING mode — replace with screen-guess + screen-result below -->
+  <div id="screen-match" class="screen hidden">
+    <p class="match-intro">[MATCH INTRO TEXT — e.g. "Based on your interests, we think your best career match is..."]</p>
+    <div id="match-card" class="character-card glass-card">
+      <div id="match-emoji" class="character-emoji"></div>
+      <h2 id="match-name" class="character-name"></h2>
+      <p id="match-fact" class="character-fact"></p>
+    </div>
+    <p class="match-confirm">[MATCH CONFIRM TEXT — e.g. "This career fits your personality and what you love!"]</p>
+    <button id="btn-see-future" class="btn btn-start btn-glow">[SEE END SCREEN BUTTON — e.g. "See My AI Future! 🚀"]</button>
+    <button class="btn-restart-small btn-restart-link">Start Over</button>
+  </div>
+
+  <!-- ========== DISCOVERY MODE: End Screen ========== -->
+  <!-- Remove/replace for GUESSING mode -->
+  <div id="screen-future" class="screen hidden">
+    <p class="future-intro">Your Future as a <span id="future-title-name"></span>!</p>
+
+    <div id="future-card" class="character-card glass-card future-career-card">
+      <div id="future-emoji" class="character-emoji"></div>
+      <h2 id="future-name" class="character-name"></h2>
+    </div>
+
+    <div class="glass-card ai-section-card ai-impact-card">
+      <h3 class="ai-section-title">[SECTION 1 TITLE — e.g. "🤖 How AI Will Change This"]</h3>
+      <p id="future-ai-impact" class="ai-section-text"></p>
+    </div>
+
+    <div class="glass-card ai-section-card ai-success-card">
+      <h3 class="ai-section-title">[SECTION 2 TITLE — e.g. "⭐ Your Steps to Success"]</h3>
+      <ol id="future-ai-steps" class="ai-steps-list"></ol>
+    </div>
+
+    <button id="btn-future-play-again" class="btn btn-start btn-glow">[EXPLORE AGAIN BUTTON — e.g. "Explore Again!"]</button>
+    <img src="logo/NexusBlueLogo2white_backandblue_trans.png" alt="NexusBlue" class="nb-logo-footer">
+  </div>
+
+  <!--
+  ========== GUESSING MODE screens (uncomment and use instead of match + future above) ==========
+
+  <div id="screen-guess" class="screen hidden">
+    <p class="guess-intro">I think your [ITEM] is...</p>
+    <div id="guess-card" class="character-card glass-card">
+      <div id="guess-emoji" class="character-emoji"></div>
+      <h2 id="guess-name" class="character-name"></h2>
+      <p id="guess-fact" class="character-fact"></p>
+    </div>
+    <p class="guess-question">Am I right?</p>
+    <div class="guess-buttons">
+      <button id="btn-correct" class="btn btn-yes">Yes! 🎉</button>
+      <button id="btn-wrong" class="btn btn-no">Not Quite</button>
+    </div>
+    <button class="btn-restart-small btn-restart-link">Start Over</button>
+  </div>
+
+  <div id="screen-result" class="screen hidden">
+    <div id="result-correct" class="hidden">
+      <h2 class="result-title">I Got It! 🎉</h2>
+      <div id="result-card" class="character-card glass-card"></div>
+    </div>
+    <div id="result-wrong" class="hidden">
+      <h2 class="result-title">Hmm, I was wrong!</h2>
+      <p class="result-text">You stumped me! Try again?</p>
+    </div>
+    <button id="btn-result-play-again" class="btn btn-start btn-glow">Play Again!</button>
+    <img src="logo/NexusBlueLogo2white_backandblue_trans.png" alt="NexusBlue" class="nb-logo-footer">
+  </div>
+  -->
+
+  <!-- Tap-to-start overlay (unlocks speech synthesis) -->
+  <div id="tap-overlay" class="tap-overlay">
+    <p class="tap-text">Tap anywhere to start!</p>
+  </div>
+
+  <!-- Dark Overlay -->
+  <div class="bg-overlay" aria-hidden="true"></div>
+
+  <!-- Metrics -->
+  <div class="metrics">Sessions: <span id="play-count">0</span></div>
+
+  <!-- Scripts — load order matters! -->
+  <script src="js/data.js?v=1"></script>
+  <script src="js/engine.js?v=1"></script>
+  <script src="js/speech.js?v=1"></script>
+  <script src="js/effects.js?v=1"></script>
+  <script src="js/ui.js?v=1"></script>
+  <script src="js/metrics.js?v=1"></script>
+  <script src="js/app.js?v=1"></script>
+</body>
+</html>

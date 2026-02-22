@@ -1,0 +1,70 @@
+name: Build & Deploy iOS
+
+# Triggers on any push to main that changes web app files
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.js'
+      - '**.html'
+      - '**.css'
+      - 'capacitor.config.json'
+      - 'package.json'
+
+jobs:
+  build-ios:
+    runs-on: macos-latest  # GitHub's free macOS runner — no Mac hardware needed
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync Capacitor
+        run: npx cap sync ios
+
+      - name: Install Apple Distribution Certificate
+        uses: apple-actions/import-codesign-certs@v2
+        with:
+          p12-file-base64: ${{ secrets.IOS_P12_CERTIFICATE }}
+          p12-password: ${{ secrets.IOS_P12_PASSWORD }}
+
+      - name: Download Provisioning Profiles
+        uses: apple-actions/download-provisioning-profiles@v1
+        with:
+          # CHANGE THIS: update bundle-id to match your app
+          bundle-id: com.nexusblue.[appname]
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+
+      - name: Build & Archive
+        run: |
+          cd ios/App
+          xcodebuild archive \
+            -scheme App \
+            -archivePath $RUNNER_TEMP/App.xcarchive \
+            -configuration Release \
+            CODE_SIGNING_REQUIRED=YES
+
+      - name: Export IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/App.xcarchive \
+            -exportPath $RUNNER_TEMP/App.ipa \
+            -exportOptionsPlist ios/ExportOptions.plist
+
+      - name: Upload to TestFlight
+        uses: apple-actions/upload-testflight-build@v1
+        with:
+          app-path: $RUNNER_TEMP/App.ipa/App.ipa
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
