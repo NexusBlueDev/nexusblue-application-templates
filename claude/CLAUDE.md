@@ -1,9 +1,10 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 3.0**
+**Version: 3.1**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
-**Local master:** `C:\Users\BillMagnuson\OneDrive - NexusBlue\01_Business\01_NexusBlue\18_Dev-projects\application-templates\claude\CLAUDE.md`
+**Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
+**To sync after update:** `cp /home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md ~/.claude/CLAUDE.md` — Windows machines pull automatically on login via VBScript
 
 > This file governs ALL NexusBlue development projects. Project-specific rules live in each
 > project's own `CLAUDE.md` file and take precedence where they conflict with this document.
@@ -24,7 +25,7 @@ You move with **confidence and velocity**. You do not ask for permission on rout
 - **Modularity is non-negotiable.** Single responsibilities, clean interfaces, explicit dependencies. If a file does two unrelated things, split it.
 - **Documentation is a first-class deliverable.** Architecture decisions, API contracts, environment setup, and handoff state are captured in real files, committed to the repo, and kept current.
 - **Use what we have.** Before recommending a new tool, check whether our existing stack already solves the problem.
-- **Stay flexible.** Never hard-couple to a specific tool version. Prefer solutions that work within OneDrive-synced project directories.
+- **Stay flexible.** Never hard-couple to a specific tool version. Prefer solutions that run on the Droplet (Linux) and degrade gracefully to OneDrive-synced directories when needed.
 
 ---
 
@@ -46,7 +47,7 @@ When a session begins:
 
 1. **Read HANDOFF.md FIRST.** It is the project's state document. Ingest it completely — understand current status, recent changes, and what's next — before touching any code.
 2. **If HANDOFF.md is absent**, note it and create one at the first natural breakpoint.
-3. **Check MEMORY.md** in `.claude/projects/[project-dir]/memory/`. This contains cross-session patterns and project-specific conventions learned by Claude.
+3. **Auto-memory is loaded automatically.** Claude Code loads `~/.claude/projects/[path]/memory/MEMORY.md` into context for every session — no manual check needed. It is machine-local (not committed to git). Update it when you discover stable patterns worth preserving across sessions.
 4. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
 5. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
 6. **Start working.** Don't wait for confirmation on obvious next steps.
@@ -153,6 +154,19 @@ Documentation is written **as work happens**, not after.
 
 ---
 
+## New Project Checklist
+
+Every new project must have these before the first real commit:
+
+- [ ] `CLAUDE.md` — copy from `PROJECT_CLAUDE_TEMPLATE.md`, customize for this project
+- [ ] `HANDOFF.md` — create at first session, update every session
+- [ ] `README.md` — what it is, how to run it, one-line architecture summary
+- [ ] `.env.example` — if any environment variables are required (even one)
+- [ ] `.gitignore` — at minimum: `.env`, `*.env`, `!.env.example`, `node_modules/`, `__pycache__/`, `.DS_Store`, `NUL`, `Thumbs.db`, `desktop.ini`
+- [ ] `.vscode/settings.json` — `{"chat.useClaudeHooks": true}` to enable Claude Code hooks
+
+---
+
 ## HANDOFF.md Standard Structure
 
 Every project's HANDOFF.md follows this structure:
@@ -192,14 +206,17 @@ Every project's HANDOFF.md follows this structure:
 
 ---
 
-## MEMORY.md (Claude's Working Memory)
+## MEMORY.md (Claude's Auto-Memory)
 
-MEMORY.md lives in `.claude/projects/[project-dir]/memory/` and persists across Claude Code sessions. It is **not** committed to the repo.
+Claude Code automatically manages `~/.claude/projects/[full-path]/memory/MEMORY.md` for each project. It is loaded into context at the start of every session — **you do not need to read it manually.** It is machine-local and never committed to git.
 
-- **HANDOFF.md** = human-readable project state for any developer or AI
-- **MEMORY.md** = Claude's working memory — patterns, gotchas, project-specific conventions
+| File | Who reads it | Committed? | Purpose |
+|------|-------------|------------|---------|
+| `HANDOFF.md` | Any developer or AI, any machine | Yes | Project state — status, decisions, next steps |
+| `MEMORY.md` (auto-memory) | Claude only, this machine | No | Patterns, gotchas, project-specific conventions |
+| `CLAUDE.md` | Claude only | Yes | Execution rules for this project |
 
-Update MEMORY.md when you discover stable patterns, recurring issues, or project-specific rules that should survive across sessions. Don't duplicate what's already in HANDOFF.md or CLAUDE.md.
+Update auto-memory when you discover stable patterns, recurring issues, or project-specific rules that should survive across sessions on this machine. Don't duplicate what's already in HANDOFF.md or CLAUDE.md.
 
 ---
 
@@ -220,10 +237,11 @@ Before introducing any new tool, library, or service, check whether these solve 
 - **GitHub Pages** — Static HTML5 apps (PWAs, game apps)
 
 ### Development Environment
-- **VS Code** — Primary editor
-- **Git Bash** — Primary terminal (Unix syntax on Windows — see Windows & OneDrive section)
-- **Chocolatey** — Windows package management
-- **OneDrive** — Project backup and sync (introduces path and naming constraints)
+- **DigitalOcean Droplet (nexusblue-dev)** — Primary dev environment. All code and tools live here. Connect via VS Code Remote-SSH (`ssh nexusblue-dev`). No local installs beyond VS Code + SSH key.
+- **VS Code + Remote-SSH** — Primary editor, connected to Droplet
+- **Git Bash** — Windows terminal for local scripts (Unix syntax on Windows — see Windows & OneDrive section)
+- **Chocolatey** — Windows package management (local machine setup only)
+- **OneDrive** — Business docs, assets, non-code files. Code projects moved to Droplet.
 
 ### AI Tools in Workflow
 - **Claude Code (claude-sonnet-4-6)** — Primary development copilot (this prompt)
@@ -231,7 +249,7 @@ Before introducing any new tool, library, or service, check whether these solve 
 - **Grok** — Available for AI-assisted tasks
 
 ### Prototype & Testing Flow
-1. Develop locally → 2. Push to GitHub → 3. Vercel/GitHub Pages auto-deploys → 4. Share preview URL
+1. Develop on Droplet (VS Code Remote-SSH) → 2. Push to GitHub → 3. Vercel/GitHub Pages auto-deploys → 4. Share preview URL
 
 **The "Use What We Have" Rule:** If someone (or a spec doc) recommends a new tool or service, first ask: *Does Supabase, Vercel, DigitalOcean, or our existing stack already do this?* If yes, use the existing tool. Document why if you bring in something new.
 
@@ -250,9 +268,11 @@ Before introducing any new tool, library, or service, check whether these solve 
 
 ---
 
-## Windows & OneDrive (Always Active)
+## Windows & OneDrive
 
-Projects live in OneDrive-synced directories on Windows. This introduces real constraints that cause real bugs if ignored.
+> **Scope:** These constraints apply when running scripts or tools **locally on Windows**. When developing on the DigitalOcean Droplet via VS Code Remote-SSH, you are on a standard Linux environment — these constraints do not apply there.
+
+When working locally on Windows with OneDrive-synced directories, these constraints cause real bugs if ignored:
 
 ### Shell Behavior
 - **Terminal is Git Bash** — use Unix path syntax, not PowerShell syntax.
@@ -280,6 +300,15 @@ desktop.ini
 ---
 
 ## Deployment Awareness
+
+### DigitalOcean Droplet (Background Services & APIs)
+- **Background services run as systemd units** under the `nexusblue` user. Service files live in `config/services/` in `nexusblue-servers`.
+- **Logs go to** `/var/log/nexusblue/[service].log` (symlinked as `~/logs/services/`)
+- **Reverse proxy pattern:** Apps on custom ports (3000, 8080, etc.) sit behind nginx on 443. Never open arbitrary ports in UFW for production.
+  - Dev only: `sudo ufw allow [port]/tcp comment '[app name]'`
+  - Production: nginx proxy → internal port, SSL via Let's Encrypt
+- **Service management:** `sudo systemctl [start|stop|restart|status] nexusblue-[service]`
+- **Env vars for services:** Store in `~/.env.projects/[project].env`, load in systemd unit with `EnvironmentFile=`
 
 ### Vercel (Auto-Deploy)
 - **Every push to `main` is a production deploy.** Verify locally before pushing.
@@ -337,15 +366,16 @@ This is a **living document**. As we work across projects, we learn. Those learn
 
 When you identify a standard that should apply to ALL NexusBlue projects:
 1. Note it in the session's HANDOFF.md entry: "**PROPOSE FOR GLOBAL TEMPLATE:** [description]"
-2. At session end, if the user confirms the improvement, update `application-templates/claude/CLAUDE.md`
-3. Increment the version number in the header
-4. Update `~/.claude/CLAUDE.md` by copying the updated master
-5. Commit and push the updated template to `NexusBlueDev/nexusblue-application-templates`
+2. At session end, if the user confirms the improvement, update `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
+3. Increment the version number in the header and add a version history entry
+4. Sync to Droplet global config: `cp /home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md ~/.claude/CLAUDE.md`
+5. Commit and push to `NexusBlueDev/nexusblue-application-templates` — Windows machines pull the update automatically on next login via VBScript
 
 **Version History:**
 - v1.0 — Initial template (pet_scheduler — basic copilot prompt)
 - v2.0 — Battle-tested (transcript-safety-pipeline — added MEMORY.md, Windows/OneDrive, deployment awareness, co-authorship)
-- v3.0 — Governance model (this version — explicit HANDOFF.md protocol, improvement loop, global installation, all project types covered)
+- v3.0 — Governance model (explicit HANDOFF.md protocol, improvement loop, global installation, all project types covered)
+- v3.1 — Droplet-first (primary dev env is DigitalOcean Droplet via Remote-SSH; auto-memory clarified; new project checklist; hooks; Droplet deployment patterns; Windows/OneDrive scoped correctly)
 
 ---
 
