@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 3.1**
+**Version: 3.2**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -249,7 +249,9 @@ Before introducing any new tool, library, or service, check whether these solve 
 - **Grok** — Available for AI-assisted tasks
 
 ### Prototype & Testing Flow
-1. Develop on Droplet (VS Code Remote-SSH) → 2. Push to GitHub → 3. Vercel/GitHub Pages auto-deploys → 4. Share preview URL
+1. Develop on Droplet (VS Code Remote-SSH) → 2. Push to GitHub → 3. Vercel deploys via hook → 4. Share preview URL
+
+> **Note:** Vercel's GitHub auto-deploy integration does NOT reliably trigger from the Droplet SSH environment. Always use a deploy hook instead (see Vercel deployment section below).
 
 **The "Use What We Have" Rule:** If someone (or a spec doc) recommends a new tool or service, first ask: *Does Supabase, Vercel, DigitalOcean, or our existing stack already do this?* If yes, use the existing tool. Document why if you bring in something new.
 
@@ -310,8 +312,23 @@ desktop.ini
 - **Service management:** `sudo systemctl [start|stop|restart|status] nexusblue-[service]`
 - **Env vars for services:** Store in `~/.env.projects/[project].env`, load in systemd unit with `EnvironmentFile=`
 
-### Vercel (Auto-Deploy)
-- **Every push to `main` is a production deploy.** Verify locally before pushing.
+### Vercel (Deploy Hook Pattern — Required from Droplet)
+- **Vercel's GitHub auto-deploy integration does NOT reliably trigger from the Droplet SSH environment.** Do not rely on it.
+- **Always set up a deploy hook** for every Vercel project: Vercel dashboard → project → Settings → Git → Deploy Hooks → create hook named `droplet-push` on branch `main`.
+- **Store the hook URL** in `.env.local` as `VERCEL_DEPLOY_HOOK` (gitignored — it's a secret).
+- **Install a git post-push hook** at `.git/hooks/post-push` to auto-trigger on every push to main:
+  ```bash
+  #!/bin/bash
+  BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  if [ "$BRANCH" = "main" ]; then
+    HOOK=$(grep VERCEL_DEPLOY_HOOK .env.local 2>/dev/null | cut -d= -f2-)
+    if [ -n "$HOOK" ]; then
+      echo "→ Triggering Vercel deploy..."
+      curl -s -X POST "$HOOK" | grep -o '"state":"[^"]*"' || true
+    fi
+  fi
+  ```
+- **To trigger manually:** `curl -s -X POST "$(grep VERCEL_DEPLOY_HOOK .env.local | cut -d= -f2-)"`
 - Run `npm run build` locally to catch TypeScript and build errors before they hit production.
 - Vercel environment variables are set in the Vercel dashboard, not in `.env` files.
 
@@ -376,6 +393,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v2.0 — Battle-tested (transcript-safety-pipeline — added MEMORY.md, Windows/OneDrive, deployment awareness, co-authorship)
 - v3.0 — Governance model (explicit HANDOFF.md protocol, improvement loop, global installation, all project types covered)
 - v3.1 — Droplet-first (primary dev env is DigitalOcean Droplet via Remote-SSH; auto-memory clarified; new project checklist; hooks; Droplet deployment patterns; Windows/OneDrive scoped correctly)
+- v3.2 — Vercel deploy hook pattern (GitHub auto-deploy integration unreliable from Droplet SSH; always use deploy hook + git post-push hook instead)
 
 ---
 
