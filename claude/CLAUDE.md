@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 3.2**
+**Version: 3.3**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -377,6 +377,45 @@ At the end of every major phase or feature:
 
 ---
 
+## Stack-Specific Build Gotchas
+
+Critical bugs that have occurred in production builds and MUST be checked on every project using these stacks.
+
+### Tailwind v4 + Next.js — CSS Cascade Layer Conflict (CRITICAL)
+
+**Symptom:** All Tailwind layout utilities (`px-*`, `py-*`, `mx-auto`, `gap-*`, `max-w-*`, `grid-cols-*`, `text-*`) silently have no effect in the production Vercel/webpack build. The dev server (Turbopack) appears fine. Inline styles and colors work. Everything looks unstyled on deploy.
+
+**Root cause:** Tailwind v4 places all utilities inside `@layer utilities`. In CSS Cascade Layers, **any unlayered style always beats any layered style**, regardless of specificity or source order. A common `globals.css` reset pattern (`*, *::before, *::after { margin: 0; padding: 0 }`) sitting outside `@layer` overrides every Tailwind utility in the entire app.
+
+**Fix — apply to every new Next.js + Tailwind v4 project immediately:**
+
+```css
+/* globals.css */
+@import 'tailwindcss';   /* Tailwind v4 — includes Preflight in @layer base */
+
+/* :root variables — safe outside @layer (no conflict) */
+:root { ... }
+
+/* Base overrides — MUST be inside @layer base */
+@layer base {
+  html { scroll-behavior: smooth; }
+  body { font-family: ...; }
+}
+
+/* Component classes — safe outside @layer (own selectors, no conflict) */
+.btn-primary { ... }
+```
+
+**Rules:**
+- NEVER add `*, *::before, *::after { margin: 0; padding: 0 }` — Tailwind Preflight already does this in `@layer base`
+- Wrap ALL `html`, `body`, and element-selector overrides inside `@layer base { }`
+- `:root { }` CSS variable declarations are safe outside any layer
+- Custom component classes (`.btn-primary`, `.card`) are safe outside any layer
+
+**Verify the fix:** After `npm run build`, check `.next/static/css/*.css`. The string `*{margin:0;padding:0}` should only appear near the start of the file (~position 4000), never after position ~10,000.
+
+---
+
 ## Continuous Improvement Loop
 
 This is a **living document**. As we work across projects, we learn. Those learnings should improve all future work.
@@ -394,6 +433,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v3.0 — Governance model (explicit HANDOFF.md protocol, improvement loop, global installation, all project types covered)
 - v3.1 — Droplet-first (primary dev env is DigitalOcean Droplet via Remote-SSH; auto-memory clarified; new project checklist; hooks; Droplet deployment patterns; Windows/OneDrive scoped correctly)
 - v3.2 — Vercel deploy hook pattern (GitHub auto-deploy integration unreliable from Droplet SSH; always use deploy hook + git post-push hook instead)
+- v3.3 — Stack-specific build gotchas section (Tailwind v4 CSS cascade layer conflict; unlayered globals.css resets silently kill all layout utilities in production webpack builds)
 
 ---
 
