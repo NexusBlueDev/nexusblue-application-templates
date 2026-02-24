@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 3.4**
+**Version: 3.5**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -319,37 +319,48 @@ desktop.ini
 **Setup (once per project):**
 
 1. Create a Vercel personal access token: vercel.com → Account Settings → Tokens → create `droplet-deploy`
-2. Get your project's GitHub link details:
+2. Get your project's GitHub repo ID:
    ```bash
    TOKEN=your_token
    curl -s "https://api.vercel.com/v9/projects/YOUR-PROJECT-NAME?teamId=YOUR-TEAM-ID" \
      -H "Authorization: Bearer $TOKEN" | python3 -c "
    import sys,json; d=json.load(sys.stdin)
    link=d.get('link',{})
-   print('id:', d.get('id'), 'repoId:', link.get('repoId'), 'org:', link.get('org'))"
+   print('repoId:', link.get('repoId'), 'org:', link.get('org'))"
    ```
 3. Store in `.env.local` (gitignored):
    ```
    VERCEL_TOKEN=vcp_...
    ```
-4. Install a git post-push hook at `.git/hooks/post-push`:
+4. Create `scripts/deploy.sh` in the project root (committed to repo, no secrets):
    ```bash
    #!/bin/bash
-   BRANCH=$(git rev-parse --abbrev-ref HEAD)
-   if [ "$BRANCH" = "main" ]; then
-     ENV_FILE="/home/nexusblue/dev/YOUR-PROJECT/.env.local"
-     TOKEN=$(grep '^VERCEL_TOKEN=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
-     if [ -n "$TOKEN" ]; then
-       echo "→ Triggering Vercel deployment..."
-       RESULT=$(curl -s -X POST "https://api.vercel.com/v13/deployments?teamId=YOUR-TEAM-ID" \
-         -H "Authorization: Bearer $TOKEN" \
-         -H "Content-Type: application/json" \
-         -d '{"name":"YOUR-PROJECT","target":"production","gitSource":{"type":"github","org":"YOUR-ORG","repo":"YOUR-REPO","ref":"main","repoId":YOUR-REPO-ID}}')
-       echo "$RESULT" | grep -o '"readyState":"[^"]*"' | head -1 || true
-     fi
-   fi
+   set -e
+   VERCEL_TOKEN="${VERCEL_TOKEN:-$(grep '^VERCEL_TOKEN=' .env.local 2>/dev/null | cut -d= -f2-)}"
+   GH_REPO_ID=YOUR-REPO-ID
+   echo "Deploying YOUR-PROJECT to Vercel production..."
+   RESPONSE=$(curl -s -X POST "https://api.vercel.com/v13/deployments?teamId=nexus-blue-dev" \
+     -H "Authorization: Bearer $VERCEL_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d "{\"name\":\"YOUR-PROJECT\",\"target\":\"production\",\"gitSource\":{\"type\":\"github\",\"org\":\"NexusBlueDev\",\"repo\":\"YOUR-REPO\",\"repoId\":$GH_REPO_ID,\"ref\":\"main\"}}")
+   DEPLOY_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id','ERROR'))")
+   echo "Deployment ID: $DEPLOY_ID"
+   for i in $(seq 1 20); do
+     sleep 15
+     STATE=$(curl -s "https://api.vercel.com/v13/deployments/$DEPLOY_ID" \
+       -H "Authorization: Bearer $VERCEL_TOKEN" \
+       | python3 -c "import sys,json; print(json.load(sys.stdin).get('readyState','?'))")
+     echo "  $i: $STATE"
+     [ "$STATE" = "READY" ] && echo "Deployed!" && exit 0
+     [ "$STATE" = "ERROR" ] || [ "$STATE" = "CANCELED" ] && echo "Failed: $STATE" && exit 1
+   done
+   echo "Timed out" && exit 1
    ```
-5. `chmod +x .git/hooks/post-push`
+5. `chmod +x scripts/deploy.sh`
+
+**Deploy workflow:** `git push origin main && ./scripts/deploy.sh`
+
+> **Do NOT use git post-push hooks for deployment.** Hooks are not committed to the repo, break silently when hooks directory is reset, and make deployments invisible/automatic. The explicit `./scripts/deploy.sh` call is intentional — you control when production is updated.
 
 **Key facts:**
 - `vercel deploy --prod` CLI **will fail** with "git author must have access to team" — use the REST API instead
@@ -544,6 +555,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v3.2 — Vercel deploy hook pattern (GitHub auto-deploy integration unreliable from Droplet SSH; always use deploy hook + git post-push hook instead)
 - v3.3 — Stack-specific build gotchas section (Tailwind v4 CSS cascade layer conflict; unlayered globals.css resets silently kill all layout utilities in production webpack builds)
 - v3.4 — Vercel deployment upgraded to REST API token pattern (deploy hooks also unreliable; CLI fails with git author team check; REST API is reliable and deploys from GitHub source); added missing `.input` class gotcha; added JSX IIFE parser failure gotcha; added AI SDK generateText maxTokens gotcha
+- v3.5 — Replaced git post-push hook with explicit `scripts/deploy.sh` as the standard (hooks not committed to repo, break silently, make deploys invisible); added explicit "Do NOT use git hooks" rule
 
 ---
 
