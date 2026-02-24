@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 3.3**
+**Version: 3.4**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -249,9 +249,9 @@ Before introducing any new tool, library, or service, check whether these solve 
 - **Grok** — Available for AI-assisted tasks
 
 ### Prototype & Testing Flow
-1. Develop on Droplet (VS Code Remote-SSH) → 2. Push to GitHub → 3. Vercel deploys via hook → 4. Share preview URL
+1. Develop on Droplet (VS Code Remote-SSH) → 2. Push to GitHub → 3. Vercel deploys via API token → 4. Share preview URL
 
-> **Note:** Vercel's GitHub auto-deploy integration does NOT reliably trigger from the Droplet SSH environment. Always use a deploy hook instead (see Vercel deployment section below).
+> **Note:** Vercel's GitHub auto-deploy integration and deploy hooks are NOT reliably triggered from the Droplet SSH environment. Use the Vercel REST API with a token instead (see Vercel deployment section below).
 
 **The "Use What We Have" Rule:** If someone (or a spec doc) recommends a new tool or service, first ask: *Does Supabase, Vercel, DigitalOcean, or our existing stack already do this?* If yes, use the existing tool. Document why if you bring in something new.
 
@@ -312,25 +312,52 @@ desktop.ini
 - **Service management:** `sudo systemctl [start|stop|restart|status] nexusblue-[service]`
 - **Env vars for services:** Store in `~/.env.projects/[project].env`, load in systemd unit with `EnvironmentFile=`
 
-### Vercel (Deploy Hook Pattern — Required from Droplet)
-- **Vercel's GitHub auto-deploy integration does NOT reliably trigger from the Droplet SSH environment.** Do not rely on it.
-- **Always set up a deploy hook** for every Vercel project: Vercel dashboard → project → Settings → Git → Deploy Hooks → create hook named `droplet-push` on branch `main`.
-- **Store the hook URL** in `.env.local` as `VERCEL_DEPLOY_HOOK` (gitignored — it's a secret).
-- **Install a git post-push hook** at `.git/hooks/post-push` to auto-trigger on every push to main:
-  ```bash
-  #!/bin/bash
-  BRANCH=$(git rev-parse --abbrev-ref HEAD)
-  if [ "$BRANCH" = "main" ]; then
-    HOOK=$(grep VERCEL_DEPLOY_HOOK .env.local 2>/dev/null | cut -d= -f2-)
-    if [ -n "$HOOK" ]; then
-      echo "→ Triggering Vercel deploy..."
-      curl -s -X POST "$HOOK" | grep -o '"state":"[^"]*"' || true
-    fi
-  fi
-  ```
-- **To trigger manually:** `curl -s -X POST "$(grep VERCEL_DEPLOY_HOOK .env.local | cut -d= -f2-)"`
-- Run `npm run build` locally to catch TypeScript and build errors before they hit production.
-- Vercel environment variables are set in the Vercel dashboard, not in `.env` files.
+### Vercel (REST API Token Pattern — Required from Droplet)
+
+**Both GitHub auto-deploy and deploy hook URLs are unreliable from Droplet SSH.** Use the Vercel REST API with a personal access token instead — it is reliable and deploys from the GitHub source directly.
+
+**Setup (once per project):**
+
+1. Create a Vercel personal access token: vercel.com → Account Settings → Tokens → create `droplet-deploy`
+2. Get your project's GitHub link details:
+   ```bash
+   TOKEN=your_token
+   curl -s "https://api.vercel.com/v9/projects/YOUR-PROJECT-NAME?teamId=YOUR-TEAM-ID" \
+     -H "Authorization: Bearer $TOKEN" | python3 -c "
+   import sys,json; d=json.load(sys.stdin)
+   link=d.get('link',{})
+   print('id:', d.get('id'), 'repoId:', link.get('repoId'), 'org:', link.get('org'))"
+   ```
+3. Store in `.env.local` (gitignored):
+   ```
+   VERCEL_TOKEN=vcp_...
+   ```
+4. Install a git post-push hook at `.git/hooks/post-push`:
+   ```bash
+   #!/bin/bash
+   BRANCH=$(git rev-parse --abbrev-ref HEAD)
+   if [ "$BRANCH" = "main" ]; then
+     ENV_FILE="/home/nexusblue/dev/YOUR-PROJECT/.env.local"
+     TOKEN=$(grep '^VERCEL_TOKEN=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
+     if [ -n "$TOKEN" ]; then
+       echo "→ Triggering Vercel deployment..."
+       RESULT=$(curl -s -X POST "https://api.vercel.com/v13/deployments?teamId=YOUR-TEAM-ID" \
+         -H "Authorization: Bearer $TOKEN" \
+         -H "Content-Type: application/json" \
+         -d '{"name":"YOUR-PROJECT","target":"production","gitSource":{"type":"github","org":"YOUR-ORG","repo":"YOUR-REPO","ref":"main","repoId":YOUR-REPO-ID}}')
+       echo "$RESULT" | grep -o '"readyState":"[^"]*"' | head -1 || true
+     fi
+   fi
+   ```
+5. `chmod +x .git/hooks/post-push`
+
+**Key facts:**
+- `vercel deploy --prod` CLI **will fail** with "git author must have access to team" — use the REST API instead
+- The REST API deploys from the GitHub source (same as a normal Vercel build), not local files
+- Token lives only in `.env.local` on the Droplet — never committed
+- Rotate the token at vercel.com if it is ever shared or compromised
+- Run `npm run build` locally to catch TypeScript errors before pushing
+- Vercel environment variables for the app are set in the Vercel dashboard, not in `.env` files
 
 ### Supabase
 - **Edge Functions require explicit deployment** — `npx supabase functions deploy [name] --no-verify-jwt --project-ref [ref]`.
@@ -416,6 +443,88 @@ Critical bugs that have occurred in production builds and MUST be checked on eve
 
 ---
 
+### Tailwind v4 + Next.js — Missing `.input` Class
+
+**Symptom:** Form inputs with `className="input"` render unstyled. No error — the class simply isn't defined.
+
+**Root cause:** Tailwind v4 does not ship a pre-built `.input` component class. Projects that use `.input` as a shorthand (common pattern) must define it explicitly in `globals.css`.
+
+**Fix — add to `globals.css` alongside `.input-field`:**
+```css
+.input {
+  width: 100%;
+  padding: 0.5625rem 0.875rem;
+  border: 1.5px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-primary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.input:focus {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary) 15%, transparent);
+}
+.input::placeholder { color: var(--text-muted); }
+```
+
+**Rule:** When scaffolding a new project, define both `.input-field` (long form) and `.input` (shorthand) in `globals.css` from the start.
+
+---
+
+### React JSX — No IIFEs for Complex Conditional Rendering
+
+**Symptom:** Build error `Expected '</', got ')'` on a JSX line using an IIFE pattern like `{(() => { ... })()}`.
+
+**Root cause:** The JSX/SWC parser does not reliably handle IIFEs (immediately-invoked function expressions) inline in JSX. Even syntactically valid JavaScript can cause parser failures inside JSX expressions.
+
+**Fix — extract to a helper component or compute before the return:**
+
+```tsx
+// ❌ Fails — IIFE in JSX
+{someCondition && (() => {
+  const val = computeValue();
+  return <div>{val}</div>;
+})()}
+
+// ✅ Option 1 — compute before return
+const displayVal = someCondition ? computeValue() : null;
+// ... then in JSX:
+{displayVal && <div>{displayVal}</div>}
+
+// ✅ Option 2 — extract to a named component
+function DisplayThing({ data }: { data: DataType }) {
+  const val = computeValue(data);
+  return <div>{val}</div>;
+}
+// ... then in JSX:
+{someCondition && <DisplayThing data={data} />}
+```
+
+**Rule:** Never use IIFEs in JSX. If the logic is too complex for an inline ternary, extract it — either compute the value above the `return` or make a small helper component.
+
+---
+
+### Vercel AI SDK — `generateText` Parameter Names
+
+**Symptom:** TypeScript error: `'maxTokens' does not exist in type 'CallSettings'` when calling `generateText()`.
+
+**Root cause:** The Vercel AI SDK (`ai` package) does not expose `maxTokens` on `generateText` the same way as `streamText`. The option either doesn't exist or has a different name depending on the SDK version.
+
+**Fix:** Omit `maxTokens` from `generateText` calls. The default token limit is sufficient for most enrichment/analysis tasks. If you genuinely need to limit output length, do it via prompt instructions instead:
+
+```typescript
+// ❌ Fails
+const { text } = await generateText({ model, prompt, maxTokens: 800 });
+
+// ✅ Works
+const { text } = await generateText({ model, prompt });
+```
+
+---
+
 ## Continuous Improvement Loop
 
 This is a **living document**. As we work across projects, we learn. Those learnings should improve all future work.
@@ -434,6 +543,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v3.1 — Droplet-first (primary dev env is DigitalOcean Droplet via Remote-SSH; auto-memory clarified; new project checklist; hooks; Droplet deployment patterns; Windows/OneDrive scoped correctly)
 - v3.2 — Vercel deploy hook pattern (GitHub auto-deploy integration unreliable from Droplet SSH; always use deploy hook + git post-push hook instead)
 - v3.3 — Stack-specific build gotchas section (Tailwind v4 CSS cascade layer conflict; unlayered globals.css resets silently kill all layout utilities in production webpack builds)
+- v3.4 — Vercel deployment upgraded to REST API token pattern (deploy hooks also unreliable; CLI fails with git author team check; REST API is reliable and deploys from GitHub source); added missing `.input` class gotcha; added JSX IIFE parser failure gotcha; added AI SDK generateText maxTokens gotcha
 
 ---
 
