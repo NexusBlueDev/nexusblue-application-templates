@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 3.8**
+**Version: 3.9**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -601,6 +601,83 @@ const { text } = await generateText({ model, prompt });
 
 ---
 
+### Vercel AI SDK — `streamText` Mid-Stream Error Leaks Raw Anthropic Errors (CRITICAL)
+
+**Symptom:** Users see raw Anthropic API error JSON in the chat widget: `{"type":"error","error":{"type":"api_error","message":"Internal server error"}}`. Happens intermittently during Anthropic API incidents (500, 529 overloaded, 429 rate limit). The try/catch in the API route handler never fires.
+
+**Root cause:** `streamText()` + `toTextStreamResponse()` (or `toDataStreamResponse()`) returns the Response immediately to the client. When Anthropic returns a 500 error **after HTTP response headers are already sent**, the error travels through the stream directly to the browser. The route handler's try/catch only covers errors that happen *before* the Response is created — it cannot catch mid-stream failures.
+
+**Fix — wrap `textStream` in a custom ReadableStream with error handling and retry:**
+
+```typescript
+import { streamText } from 'ai';
+
+const MAX_RETRIES = 1;
+const RETRY_DELAY_MS = 1500;
+
+// Build streamConfig as usual (model, system, messages)
+const streamConfig = { model, system: systemPrompt, messages };
+
+const encoder = new TextEncoder();
+let hasContent = false;
+
+const stream = new ReadableStream({
+  async start(controller) {
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const result = streamText(streamConfig);
+        hasContent = false;
+
+        for await (const chunk of result.textStream) {
+          hasContent = true;
+          controller.enqueue(encoder.encode(chunk));
+        }
+
+        controller.close();
+        return;
+      } catch (error) {
+        const isRetryable = isRetryableError(error);
+        const isLastAttempt = attempt === MAX_RETRIES;
+
+        if (!isRetryable || isLastAttempt) {
+          if (hasContent) {
+            controller.enqueue(encoder.encode('\n\n[I hit a temporary issue. Please send your message again.]'));
+          } else {
+            controller.enqueue(encoder.encode('I am having trouble connecting right now. Please try again in a moment.'));
+          }
+          controller.close();
+          return;
+        }
+
+        await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+      }
+    }
+  },
+});
+
+return new Response(stream, {
+  headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' },
+});
+
+function isRetryableError(error: unknown): boolean {
+  if (!error) return false;
+  const msg = error instanceof Error ? error.message : String(error);
+  return msg.includes('api_error') || msg.includes('Internal server error')
+    || msg.includes('overloaded') || msg.includes('rate limit')
+    || msg.includes('529') || msg.includes('500');
+}
+```
+
+**Rules:**
+- NEVER use `toTextStreamResponse()` or `toDataStreamResponse()` for user-facing chat streams — they leak provider errors after headers are sent
+- Always wrap `result.textStream` in a custom `ReadableStream` with try/catch inside the `start()` callback
+- Add retry logic (1 retry, 1.5s delay) for retryable Anthropic errors (500, 529, 429)
+- Show friendly fallback messages — different text for partial content (some chunks sent) vs no content (total failure)
+- On the client side, add a "Try again" retry button that resends the failed message array
+- Found 2026-02-25 during active Anthropic incident ("Elevated errors on Claude Sonnet 4.6 and Opus 4.6")
+
+---
+
 ## Continuous Improvement Loop
 
 This is a **living document**. As we work across projects, we learn. Those learnings should improve all future work.
@@ -624,6 +701,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v3.6 — Added `TODO.md` as a required standard document for client/team action items; added to session start/end protocols, new project checklist, and standard files table; added Document Freshness Rules table; strengthened documentation-as-you-go rule across the Documentation Contract section
 - v3.7 — Git remote verification and deployment safety rules. Added mandatory `git remote -v` check at session start to confirm origin points to `NexusBlueDev`. Added "push before deploy" rule to Commit Discipline. Banned `vercel deploy` CLI usage (caused code loss — code deployed to Vercel but never pushed to GitHub). Added remote verification to New Project Checklist and Pre-Push Checklist. Root cause: cain-website-022026 code was deployed via CLI to Vercel from a personal account repo, local directory was later wiped, and code was only recoverable from Vercel's deployment API
 - v3.8 — Added explicit deploy step to Session End Protocol and Pre-Push Checklist. Vercel does NOT auto-deploy from the Droplet — `./scripts/deploy.sh` must be run after every `git push` for Vercel-hosted projects, or the live site stays stale. Root cause: client edits were pushed to GitHub but not deployed, leaving Vercel serving old content
+- v3.9 — Added Vercel AI SDK `streamText` mid-stream error leakage gotcha (CRITICAL). `toTextStreamResponse()` passes raw Anthropic 500/529/429 errors directly to users after HTTP headers are sent. Fix: wrap `textStream` in custom ReadableStream with try/catch + retry. Found during active Anthropic incident 2026-02-25
 
 ---
 
