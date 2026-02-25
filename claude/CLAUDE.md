@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 3.6**
+**Version: 3.7**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -50,9 +50,10 @@ When a session begins:
 3. **If HANDOFF.md is absent**, note it and create one at the first natural breakpoint.
 4. **If TODO.md is absent**, create it and populate it from any human-required actions found in HANDOFF.md.
 5. **Auto-memory is loaded automatically.** Claude Code loads `~/.claude/projects/[path]/memory/MEMORY.md` into context for every session — no manual check needed. It is machine-local (not committed to git). Update it when you discover stable patterns worth preserving across sessions.
-6. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
-7. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
-8. **Start working.** Don't wait for confirmation on obvious next steps.
+6. **Verify git remote.** Run `git remote -v`. The origin MUST point to a `NexusBlueDev` repo (`https://github.com/NexusBlueDev/...`). If it points to a personal account or any other org, **stop and fix it** before doing any work: `git remote set-url origin https://github.com/NexusBlueDev/REPO-NAME.git`. This prevents code from being pushed to the wrong repo.
+7. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
+8. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
+9. **Start working.** Don't wait for confirmation on obvious next steps.
 
 ---
 
@@ -215,6 +216,7 @@ Documents must stay current throughout the session — not just at the end.
 
 Every new project must have these before the first real commit:
 
+- [ ] **Git remote points to `NexusBlueDev`** — verify with `git remote -v`. Create repos with `gh repo create NexusBlueDev/project-name --private`, never `gh repo create project-name` (defaults to personal account)
 - [ ] `CLAUDE.md` — copy from `PROJECT_CLAUDE_TEMPLATE.md`, customize for this project
 - [ ] `HANDOFF.md` — create at first session, update every session
 - [ ] `TODO.md` — create when first human action is identified; update every session
@@ -324,6 +326,7 @@ Before introducing any new tool, library, or service, check whether these solve 
 - **Never commit secrets, .env files, or credentials.**
 - **Commit working code.** WIP goes on a branch, not main.
 - **Commit at every major phase.** Don't let the repo fall behind.
+- **Push before deploy. Always.** Code MUST be committed and pushed to `NexusBlueDev` on GitHub before any deployment to Vercel or any other hosting. Never deploy local-only code. If it's not on GitHub, it doesn't exist.
 - **Co-authorship.** Include footer: `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
 
 ---
@@ -421,7 +424,8 @@ desktop.ini
 > **Do NOT use git post-push hooks for deployment.** Hooks are not committed to the repo, break silently when hooks directory is reset, and make deployments invisible/automatic. The explicit `./scripts/deploy.sh` call is intentional — you control when production is updated.
 
 **Key facts:**
-- `vercel deploy --prod` CLI **will fail** with "git author must have access to team" — use the REST API instead
+- **NEVER use `vercel deploy` or `vercel --prod` CLI.** It deploys local files directly, bypassing GitHub. This has caused code loss — code deployed to Vercel but never pushed to GitHub is unrecoverable if the local directory is lost. Always use `scripts/deploy.sh` which deploys from the GitHub source.
+- **NEVER use `vercel link` to deploy.** Only use it for `vercel env pull` to download env vars.
 - The REST API deploys from the GitHub source (same as a normal Vercel build), not local files
 - Token lives only in `.env.local` on the Droplet — never committed
 - Rotate the token at vercel.com if it is ever shared or compromised
@@ -439,10 +443,11 @@ desktop.ini
 - Enable Pages via: `gh api repos/[org]/[repo]/pages --method POST` with `{"source":{"branch":"main","path":"/"}}`
 
 ### Pre-Push Checklist
-1. Build passes (or manual test for static apps)
-2. No secrets in staged files
-3. HANDOFF.md is current
-4. Commit message follows convention
+1. `git remote -v` confirms origin is `NexusBlueDev` (not a personal account)
+2. Build passes (or manual test for static apps)
+3. No secrets in staged files
+4. HANDOFF.md is current
+5. Commit message follows convention
 
 ---
 
@@ -615,6 +620,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v3.4 — Vercel deployment upgraded to REST API token pattern (deploy hooks also unreliable; CLI fails with git author team check; REST API is reliable and deploys from GitHub source); added missing `.input` class gotcha; added JSX IIFE parser failure gotcha; added AI SDK generateText maxTokens gotcha
 - v3.5 — Replaced git post-push hook with explicit `scripts/deploy.sh` as the standard (hooks not committed to repo, break silently, make deploys invisible); added explicit "Do NOT use git hooks" rule
 - v3.6 — Added `TODO.md` as a required standard document for client/team action items; added to session start/end protocols, new project checklist, and standard files table; added Document Freshness Rules table; strengthened documentation-as-you-go rule across the Documentation Contract section
+- v3.7 — Git remote verification and deployment safety rules. Added mandatory `git remote -v` check at session start to confirm origin points to `NexusBlueDev`. Added "push before deploy" rule to Commit Discipline. Banned `vercel deploy` CLI usage (caused code loss — code deployed to Vercel but never pushed to GitHub). Added remote verification to New Project Checklist and Pre-Push Checklist. Root cause: cain-website-022026 code was deployed via CLI to Vercel from a personal account repo, local directory was later wiped, and code was only recoverable from Vercel's deployment API
 
 ---
 
