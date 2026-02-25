@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 3.5**
+**Version: 3.6**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -46,11 +46,13 @@ You move with **confidence and velocity**. You do not ask for permission on rout
 When a session begins:
 
 1. **Read HANDOFF.md FIRST.** It is the project's state document. Ingest it completely — understand current status, recent changes, and what's next — before touching any code.
-2. **If HANDOFF.md is absent**, note it and create one at the first natural breakpoint.
-3. **Auto-memory is loaded automatically.** Claude Code loads `~/.claude/projects/[path]/memory/MEMORY.md` into context for every session — no manual check needed. It is machine-local (not committed to git). Update it when you discover stable patterns worth preserving across sessions.
-4. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
-5. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
-6. **Start working.** Don't wait for confirmation on obvious next steps.
+2. **Read TODO.md SECOND.** It is the human action item list. Note what's blocking, what's been done, and what's newly unblocked by the work you're about to do.
+3. **If HANDOFF.md is absent**, note it and create one at the first natural breakpoint.
+4. **If TODO.md is absent**, create it and populate it from any human-required actions found in HANDOFF.md.
+5. **Auto-memory is loaded automatically.** Claude Code loads `~/.claude/projects/[path]/memory/MEMORY.md` into context for every session — no manual check needed. It is machine-local (not committed to git). Update it when you discover stable patterns worth preserving across sessions.
+6. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
+7. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
+8. **Start working.** Don't wait for confirmation on obvious next steps.
 
 ---
 
@@ -59,9 +61,10 @@ When a session begins:
 At the end of every session or when the user signals wrapping up:
 
 1. **Update HANDOFF.md** — add a session entry, update current state, update next steps.
-2. **Update MEMORY.md** if new stable patterns, gotchas, or conventions were discovered.
-3. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions.
-4. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
+2. **Update TODO.md** — mark completed items done (with date), add any new human actions identified during the session, remove items that are no longer relevant.
+3. **Update MEMORY.md** if new stable patterns, gotchas, or conventions were discovered.
+4. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions.
+5. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
 
 ---
 
@@ -131,19 +134,73 @@ When the developer says "step by step" or "let me confirm before moving forward"
 
 ## Documentation Contract
 
-Documentation is written **as work happens**, not after.
+Documentation is written **as work happens**, not after. Documents are updated **continuously throughout the session**, not only at the end. Every major action — a feature completed, a bug fixed, a decision made, a client action identified — updates the relevant document before moving to the next task.
 
 ### Standard Project Files
 
 | File | Purpose | When Created |
 |------|---------|-------------|
 | `HANDOFF.md` | Project state — session log, current status, next steps | First session; updated every session |
+| `TODO.md` | Client and team action items — everything that requires a human to act | First time a human action is identified; updated throughout every session |
 | `README.md` | What the project is, how to run it, high-level architecture | Project creation |
 | `CLAUDE.md` | Project-specific Claude Code execution rules | Project creation (based on `PROJECT_CLAUDE_TEMPLATE.md`) |
 | `ARCHITECTURE.md` | System design, data flow, service boundaries | When architecture decisions are made |
 | `SETUP.md` | Full environment setup from zero | When applicable |
 | `.env.example` | Template of required environment variables | When any env var is required |
 | `CHANGELOG.md` | What changed (user-facing) | At first release or milestone |
+
+### TODO.md — Client & Team Action Items
+
+`TODO.md` is the **single source of truth for everything that requires a human to act on**. It is separate from HANDOFF.md because HANDOFF.md is the project state log — TODO.md is the action list.
+
+**Rules:**
+- **Every time a client or team action is identified**, add it to `TODO.md` immediately — do not bury it in HANDOFF.md prose.
+- **At session start**, read `TODO.md` alongside `HANDOFF.md`. Flag any items that have been completed or unblocked.
+- **At session end**, review and update `TODO.md` — mark completed items done (with date), add any new items discovered during the session.
+- **Never leave a human-required action only in a comment, in code, or in a HANDOFF.md paragraph.** It must be in `TODO.md`.
+- Items are organized by owner and priority. Use checkboxes: `- [ ]` pending, `- [x]` done.
+
+**Standard `TODO.md` structure:**
+
+```markdown
+# TODO — [Project Name]
+
+> Last updated: [date]
+> These are actions required from the client or NexusBlue team — NOT Claude tasks.
+
+## Blocking (site cannot go live without these)
+- [ ] **[Owner]** Description of action required
+
+## High Priority (do soon)
+- [ ] **[Owner]** Description
+
+## Client Content
+- [ ] **[Owner]** Description
+
+## Infrastructure & Services
+- [ ] **[Owner]** Description
+
+## Nice to Have
+- [ ] **[Owner]** Description
+
+## Completed
+- [x] **[Owner]** Description — done [date]
+```
+
+### Document Freshness Rules
+
+Documents must stay current throughout the session — not just at the end.
+
+| Trigger | Action |
+|---------|--------|
+| New feature shipped | Update `HANDOFF.md` Completed section |
+| Human action identified | Add to `TODO.md` immediately |
+| Bug fixed | Note fix in `HANDOFF.md`; remove from Known Issues if listed |
+| Architecture decision made | Update `ARCHITECTURE.md` |
+| New env var added | Update `.env.example` |
+| Session ends | Full update: `HANDOFF.md` + `TODO.md` + commit + push |
+
+**The test:** If a developer picks up the project right now without talking to anyone, can they understand what's done, what's next, and exactly what they need from the client? If not, the documents are not current enough.
 
 ### Inline Documentation
 
@@ -160,6 +217,7 @@ Every new project must have these before the first real commit:
 
 - [ ] `CLAUDE.md` — copy from `PROJECT_CLAUDE_TEMPLATE.md`, customize for this project
 - [ ] `HANDOFF.md` — create at first session, update every session
+- [ ] `TODO.md` — create when first human action is identified; update every session
 - [ ] `README.md` — what it is, how to run it, one-line architecture summary
 - [ ] `.env.example` — if any environment variables are required (even one)
 - [ ] `.gitignore` — at minimum: `.env`, `*.env`, `!.env.example`, `node_modules/`, `__pycache__/`, `.DS_Store`, `NUL`, `Thumbs.db`, `desktop.ini`
@@ -556,6 +614,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v3.3 — Stack-specific build gotchas section (Tailwind v4 CSS cascade layer conflict; unlayered globals.css resets silently kill all layout utilities in production webpack builds)
 - v3.4 — Vercel deployment upgraded to REST API token pattern (deploy hooks also unreliable; CLI fails with git author team check; REST API is reliable and deploys from GitHub source); added missing `.input` class gotcha; added JSX IIFE parser failure gotcha; added AI SDK generateText maxTokens gotcha
 - v3.5 — Replaced git post-push hook with explicit `scripts/deploy.sh` as the standard (hooks not committed to repo, break silently, make deploys invisible); added explicit "Do NOT use git hooks" rule
+- v3.6 — Added `TODO.md` as a required standard document for client/team action items; added to session start/end protocols, new project checklist, and standard files table; added Document Freshness Rules table; strengthened documentation-as-you-go rule across the Documentation Contract section
 
 ---
 
