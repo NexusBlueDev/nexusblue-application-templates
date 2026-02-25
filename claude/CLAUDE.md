@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 3.7**
+**Version: 3.8**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -65,7 +65,8 @@ At the end of every session or when the user signals wrapping up:
 2. **Update TODO.md** — mark completed items done (with date), add any new human actions identified during the session, remove items that are no longer relevant.
 3. **Update MEMORY.md** if new stable patterns, gotchas, or conventions were discovered.
 4. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions.
-5. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
+5. **Deploy if applicable** — if the project has `scripts/deploy.sh` (Vercel-hosted projects), run it after pushing. Vercel does NOT auto-deploy from the Droplet — the deploy script must be run explicitly. A push without a deploy means the live site is stale.
+6. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
 
 ---
 
@@ -448,6 +449,7 @@ desktop.ini
 3. No secrets in staged files
 4. HANDOFF.md is current
 5. Commit message follows convention
+6. **After push: run `./scripts/deploy.sh`** if the project is Vercel-hosted. Vercel does NOT auto-deploy from the Droplet — every push must be followed by an explicit deploy, or the live site won't update.
 
 ---
 
@@ -621,6 +623,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v3.5 — Replaced git post-push hook with explicit `scripts/deploy.sh` as the standard (hooks not committed to repo, break silently, make deploys invisible); added explicit "Do NOT use git hooks" rule
 - v3.6 — Added `TODO.md` as a required standard document for client/team action items; added to session start/end protocols, new project checklist, and standard files table; added Document Freshness Rules table; strengthened documentation-as-you-go rule across the Documentation Contract section
 - v3.7 — Git remote verification and deployment safety rules. Added mandatory `git remote -v` check at session start to confirm origin points to `NexusBlueDev`. Added "push before deploy" rule to Commit Discipline. Banned `vercel deploy` CLI usage (caused code loss — code deployed to Vercel but never pushed to GitHub). Added remote verification to New Project Checklist and Pre-Push Checklist. Root cause: cain-website-022026 code was deployed via CLI to Vercel from a personal account repo, local directory was later wiped, and code was only recoverable from Vercel's deployment API
+- v3.8 — Added explicit deploy step to Session End Protocol and Pre-Push Checklist. Vercel does NOT auto-deploy from the Droplet — `./scripts/deploy.sh` must be run after every `git push` for Vercel-hosted projects, or the live site stays stale. Root cause: client edits were pushed to GitHub but not deployed, leaving Vercel serving old content
 
 ---
 
