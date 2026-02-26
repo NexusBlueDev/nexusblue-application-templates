@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 4.0**
+**Version: 4.1**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -705,6 +705,65 @@ export async function middleware(request: NextRequest) {
 
 ---
 
+### Next.js + Supabase Auth — Chrome Password Manager Requires Native Form POST (CRITICAL)
+
+**Symptom:** Chrome never offers to save or autofill passwords on an admin login form. The login works, but Chrome's password manager ignores the form entirely.
+
+**Root cause:** Chrome detects password save opportunities by observing native HTML form submissions that result in a navigation. JavaScript-intercepted submissions (`e.preventDefault()`, `fetch()`, React state + `onSubmit`, Next.js server actions) do not trigger Chrome's save prompt because Chrome sees no navigation event.
+
+**Fix — use a native HTML form POST to a route handler with 303 redirect:**
+
+```tsx
+// src/app/admin/login/page.tsx — NO JavaScript interception
+'use client'
+export default function LoginPage() {
+  return (
+    <form method="post" action="/admin/login/api">
+      <input name="email" type="email" autoComplete="email" required />
+      <input name="password" type="password" autoComplete="current-password" required />
+      <button type="submit">Sign In</button>
+    </form>
+  )
+}
+```
+
+```typescript
+// src/app/admin/login/api/route.ts — server-side auth + 303 redirect
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { NextResponse, type NextRequest } from 'next/server'
+
+export async function POST(request: NextRequest) {
+  const formData = await request.formData()
+  const email = formData.get('email') as string
+  const password = formData.get('password') as string
+
+  const cookieStore = await cookies()
+  const supabase = createServerClient(/* ... cookie config ... */)
+
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  if (error) {
+    const loginUrl = new URL('/admin/login', request.url)
+    loginUrl.searchParams.set('error', 'Invalid email or password.')
+    return NextResponse.redirect(loginUrl, 303)
+  }
+
+  return NextResponse.redirect(new URL('/admin', request.url), 303)
+}
+```
+
+**Critical middleware note:** If your auth middleware checks paths, ensure it allows the API route through. Use `pathname.startsWith('/admin/login')` not `pathname === '/admin/login'`, otherwise the POST to `/admin/login/api` will be blocked.
+
+**Rules:**
+- NEVER use `e.preventDefault()` or `onSubmit` handlers on login forms where Chrome password save is needed
+- NEVER use server actions (`form action={serverAction}`) for login — Chrome doesn't detect these as navigations
+- Use `autoComplete="email"` and `autoComplete="current-password"` (not `autoComplete="username"`)
+- The route handler MUST return a `303` redirect (not 307, not 302) — 303 signals "GET the new location" which completes the navigation cycle Chrome expects
+- Error handling: redirect back to login with error in search params, read with `useSearchParams()`
+- Found 2026-02-26 after 3 failed attempts (controlled inputs, server actions, then native form POST)
+
+---
+
 ## Continuous Improvement Loop
 
 This is a **living document**. As we work across projects, we learn. Those learnings should improve all future work.
@@ -730,6 +789,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v3.8 — Added explicit deploy step to Session End Protocol and Pre-Push Checklist. Vercel does NOT auto-deploy from the Droplet — `./scripts/deploy.sh` must be run after every `git push` for Vercel-hosted projects, or the live site stays stale. Root cause: client edits were pushed to GitHub but not deployed, leaving Vercel serving old content
 - v3.9 — Added Vercel AI SDK `streamText` mid-stream error leakage gotcha (CRITICAL). `toTextStreamResponse()` passes raw Anthropic 500/529/429 errors directly to users after HTTP headers are sent. Fix: wrap `textStream` in custom ReadableStream with try/catch + retry. Found during active Anthropic incident 2026-02-25
 - v4.0 — Added Next.js + Supabase Auth middleware static file bypass gotcha. Catch-all middleware matcher blocks `public/` files (Google verification HTML, PDFs, etc.) with 307 redirect to login. Fix: add file extension regex bypass before auth check. Found 2026-02-26 during Google Search Console setup
+- v4.1 — Added Chrome password manager + Next.js login form gotcha (CRITICAL). `e.preventDefault()`, server actions, and controlled inputs all prevent Chrome from detecting password save. Fix: native HTML `<form method="post">` to route handler with 303 redirect. Found 2026-02-26 after 3 failed attempts on cain-website-022026
 
 ---
 
