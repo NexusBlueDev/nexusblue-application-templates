@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 3.9**
+**Version: 4.0**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -678,6 +678,33 @@ function isRetryableError(error: unknown): boolean {
 
 ---
 
+### Next.js + Supabase Auth Middleware — Static Files Blocked by Auth
+
+**Symptom:** Files in `public/` (e.g., Google Search Console verification `.html` files, downloadable PDFs, `robots.txt` if served as static) return 307 redirect to `/login?redirect=...` instead of serving the file content.
+
+**Root cause:** The standard Supabase auth middleware catch-all matcher `/((?!_next/static|_next/image|favicon.ico).*)` only excludes Next.js internal paths and favicon. All other paths — including `/google7b4e4de7a974e9f8.html`, `/docs/capabilities.pdf`, etc. — hit the middleware and get redirected to login when no user session exists.
+
+**Fix — add a file extension bypass early in the middleware, before any auth check:**
+
+```typescript
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Allow static file extensions through without auth
+  if (
+    pathname.match(/\.(ico|png|jpg|jpeg|svg|css|js|woff2?|html|xml|txt|pdf)$/)
+  ) {
+    return NextResponse.next();
+  }
+
+  // ... rest of auth logic
+}
+```
+
+**Rule:** When setting up auth middleware with a catch-all matcher, always include a file extension bypass for common static file types. This prevents Google Search Console verification files, SEO files (`sitemap.xml`, `robots.txt`), and downloadable assets from being blocked by auth. Found 2026-02-26 during Google Search Console setup — verification file was 307 redirecting to login.
+
+---
+
 ## Continuous Improvement Loop
 
 This is a **living document**. As we work across projects, we learn. Those learnings should improve all future work.
@@ -702,6 +729,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v3.7 — Git remote verification and deployment safety rules. Added mandatory `git remote -v` check at session start to confirm origin points to `NexusBlueDev`. Added "push before deploy" rule to Commit Discipline. Banned `vercel deploy` CLI usage (caused code loss — code deployed to Vercel but never pushed to GitHub). Added remote verification to New Project Checklist and Pre-Push Checklist. Root cause: cain-website-022026 code was deployed via CLI to Vercel from a personal account repo, local directory was later wiped, and code was only recoverable from Vercel's deployment API
 - v3.8 — Added explicit deploy step to Session End Protocol and Pre-Push Checklist. Vercel does NOT auto-deploy from the Droplet — `./scripts/deploy.sh` must be run after every `git push` for Vercel-hosted projects, or the live site stays stale. Root cause: client edits were pushed to GitHub but not deployed, leaving Vercel serving old content
 - v3.9 — Added Vercel AI SDK `streamText` mid-stream error leakage gotcha (CRITICAL). `toTextStreamResponse()` passes raw Anthropic 500/529/429 errors directly to users after HTTP headers are sent. Fix: wrap `textStream` in custom ReadableStream with try/catch + retry. Found during active Anthropic incident 2026-02-25
+- v4.0 — Added Next.js + Supabase Auth middleware static file bypass gotcha. Catch-all middleware matcher blocks `public/` files (Google verification HTML, PDFs, etc.) with 307 redirect to login. Fix: add file extension regex bypass before auth check. Found 2026-02-26 during Google Search Console setup
 
 ---
 
