@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 4.2**
+**Version: 4.3**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -54,6 +54,8 @@ When a session begins:
 7. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
 8. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
 9. **Start working.** Don't wait for confirmation on obvious next steps.
+
+> **New Project Rule:** When creating a brand new project (no existing HANDOFF.md, no git history), **do NOT explore or read other projects on the Droplet.** You already know the stack, conventions, and templates from this global CLAUDE.md. Scaffold from knowledge, not from scanning unrelated repos. Reading other projects wastes time, risks context pollution, and adds no value when the standards are documented here. Only reference another project if the user explicitly asks you to copy a specific pattern from it.
 
 ---
 
@@ -864,6 +866,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v4.0 — Added Next.js + Supabase Auth middleware static file bypass gotcha. Catch-all middleware matcher blocks `public/` files (Google verification HTML, PDFs, etc.) with 307 redirect to login. Fix: add file extension regex bypass before auth check. Found 2026-02-26 during Google Search Console setup
 - v4.1 — Added Chrome password manager + Next.js login form gotcha (CRITICAL). `e.preventDefault()`, server actions, and controlled inputs all prevent Chrome from detecting password save. Fix: native HTML `<form method="post">` to route handler with 303 redirect. Found 2026-02-26 after 3 failed attempts on cain-website-022026
 - v4.2 — Replaced Chrome password manager section with comprehensive "Standard Login Pattern" covering the full Supabase Auth architecture: server actions, two-source-of-truth role pattern (DB + metadata sync), auth callback, middleware with role-based routing, and Chrome password manager input attributes. Reference implementation: nexusblue-website. Validated on production across all roles and browsers
+- v4.3 — Added New Project isolation rule to Session Start Protocol. When creating a brand new project, do NOT explore or read other projects on the Droplet — scaffold from documented standards in this CLAUDE.md, not from scanning unrelated repos. Prevents wasted time and context pollution. Root cause: sectorius-website session attempted to explore 3 existing projects before scaffolding, adding unnecessary delay
 
 ---
 
