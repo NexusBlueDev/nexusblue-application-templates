@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 4.1**
+**Version: 4.2**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -705,62 +705,135 @@ export async function middleware(request: NextRequest) {
 
 ---
 
-### Next.js + Supabase Auth — Chrome Password Manager Requires Native Form POST (CRITICAL)
+### Next.js + Supabase Auth — Standard Login Pattern (CRITICAL)
 
-**Symptom:** Chrome never offers to save or autofill passwords on an admin login form. The login works, but Chrome's password manager ignores the form entirely.
+**The reference implementation is `nexusblue-website`.** Follow this exact pattern for all Next.js + Supabase Auth projects. It handles password login, magic link, signup, password reset, role-based routing, and Chrome password manager autofill.
 
-**Root cause:** Chrome detects password save opportunities by observing native HTML form submissions that result in a navigation. JavaScript-intercepted submissions (`e.preventDefault()`, `fetch()`, React state + `onSubmit`, Next.js server actions) do not trigger Chrome's save prompt because Chrome sees no navigation event.
+**Architecture:**
 
-**Fix — use a native HTML form POST to a route handler with 303 redirect:**
+| Layer | File Pattern | Responsibility |
+|-------|-------------|----------------|
+| Login Form | `src/app/(auth)/login/page.tsx` | `'use client'` form, calls server actions |
+| Server Actions | `src/lib/auth/actions.ts` | `signIn()`, `signUp()`, `signInWithMagicLink()`, `resetPassword()`, `signOut()` |
+| Auth Callback | `src/app/auth/callback/route.ts` | Exchanges code for session, syncs role, sends welcome email, redirects |
+| Middleware | `src/middleware.ts` | Route protection, role-based access, session refresh |
+| Middleware Helper | `src/lib/supabase/middleware.ts` | Cookie-based session update (`updateSession()`) |
+| Auth Provider | `src/components/providers/auth-provider.tsx` | React context: `useAuth()` → user, role, tier, allowedPortals |
+| Server Client | `src/lib/supabase/server.ts` | `createServerSupabase()` (cookie-based) + `createServiceClient()` (RLS bypass) |
+| Browser Client | `src/lib/supabase/client.ts` | Singleton `createClient()` for client components |
+
+**Login Form — Required Input Attributes (Chrome password manager):**
 
 ```tsx
-// src/app/admin/login/page.tsx — NO JavaScript interception
-'use client'
-export default function LoginPage() {
-  return (
-    <form method="post" action="/admin/login/api">
-      <input name="email" type="email" autoComplete="email" required />
-      <input name="password" type="password" autoComplete="current-password" required />
-      <button type="submit">Sign In</button>
-    </form>
-  )
-}
+<input name="email" type="email" autoComplete="email" required />
+<input name="password" type="password" autoComplete="current-password" required />
+// Signup forms use autoComplete="new-password"
 ```
+
+These attributes are **mandatory** — without them Chrome won't offer to save or autofill passwords.
+
+**Server Action Pattern (signIn):**
 
 ```typescript
-// src/app/admin/login/api/route.ts — server-side auth + 303 redirect
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { NextResponse, type NextRequest } from 'next/server'
+// src/lib/auth/actions.ts
+export async function signIn(formData: FormData) {
+  const supabase = await createServerSupabase();
+  const email = formData.get('email') as string;
+  const password = formData.get('password') as string;
 
-export async function POST(request: NextRequest) {
-  const formData = await request.formData()
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) return { error: error.message };
 
-  const cookieStore = await cookies()
-  const supabase = createServerClient(/* ... cookie config ... */)
+  // Read role from profiles table (source of truth — NOT user_metadata)
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', data.user!.id)
+    .single();
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) {
-    const loginUrl = new URL('/admin/login', request.url)
-    loginUrl.searchParams.set('error', 'Invalid email or password.')
-    return NextResponse.redirect(loginUrl, 303)
+  const role = profile?.role || 'client';
+
+  // Sync role to user_metadata (so middleware can read it without DB hit)
+  if (data.user!.user_metadata?.role !== role) {
+    await supabase.auth.updateUser({ data: { role } });
   }
 
-  return NextResponse.redirect(new URL('/admin', request.url), 303)
+  redirect(ROLE_PORTAL_ROUTES[role]);
 }
 ```
 
-**Critical middleware note:** If your auth middleware checks paths, ensure it allows the API route through. Use `pathname.startsWith('/admin/login')` not `pathname === '/admin/login'`, otherwise the POST to `/admin/login/api` will be blocked.
+**Two Sources of Truth for Role (critical pattern):**
+- **`profiles.role`** (database) = authoritative. Server actions always read from here.
+- **`user_metadata.role`** (Supabase auth) = fast cache. Middleware reads from here to avoid DB hits.
+- Server actions sync DB → metadata on every login. Middleware trusts metadata.
+
+**Auth Callback (email confirmation + password reset):**
+
+```typescript
+// src/app/auth/callback/route.ts
+export async function GET(request: NextRequest) {
+  const code = searchParams.get('code');
+  const type = searchParams.get('type');
+
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code!);
+  if (error) return redirect('/login?error=auth_failed');
+
+  if (type === 'recovery') return redirect('/reset-password');
+
+  // Read role from DB, sync to metadata, redirect to portal
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single();
+  const role = profile?.role || 'client';
+  if (data.user.user_metadata?.role !== role) {
+    await supabase.auth.updateUser({ data: { role } });
+  }
+
+  redirect(ROLE_PORTAL_ROUTES[role]);
+}
+```
+
+**Middleware (route protection):**
+
+```typescript
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // 1. Allow static files through
+  if (pathname.match(/\.(ico|png|jpg|jpeg|svg|css|js|woff2?|html|xml|txt|pdf)$/)) {
+    return NextResponse.next();
+  }
+
+  // 2. Skip public routes
+  if (PUBLIC_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) {
+    return NextResponse.next();
+  }
+
+  // 3. Refresh session
+  const { user, response } = await updateSession(request);
+  if (!user) return NextResponse.redirect(new URL(`/login?redirect=${pathname}`, request.url));
+
+  // 4. Role-based access
+  const role = user.user_metadata?.role || 'client';
+  const allowedPrefixes = ROLE_ROUTES[role] || ['/dashboard'];
+  const isProtectedRoute = ['/admin', '/employee', '/partner', '/dashboard'].some(p => pathname.startsWith(p));
+  if (isProtectedRoute && !allowedPrefixes.some(p => pathname.startsWith(p))) {
+    return NextResponse.redirect(new URL(ROLE_PORTAL_ROUTES[role], request.url));
+  }
+
+  return response;
+}
+```
 
 **Rules:**
-- NEVER use `e.preventDefault()` or `onSubmit` handlers on login forms where Chrome password save is needed
-- NEVER use server actions (`form action={serverAction}`) for login — Chrome doesn't detect these as navigations
-- Use `autoComplete="email"` and `autoComplete="current-password"` (not `autoComplete="username"`)
-- The route handler MUST return a `303` redirect (not 307, not 302) — 303 signals "GET the new location" which completes the navigation cycle Chrome expects
-- Error handling: redirect back to login with error in search params, read with `useSearchParams()`
-- Found 2026-02-26 after 3 failed attempts (controlled inputs, server actions, then native form POST)
+- **Always use `autoComplete="email"` + `autoComplete="current-password"`** on login forms — Chrome requires these for password manager
+- **Role lives in `profiles.role` (DB) — synced to `user_metadata` for middleware speed**
+- **Middleware reads `user_metadata.role` — never hits DB**
+- **Server actions read `profiles.role` (DB) — then sync to metadata if stale**
+- **Auth callback must sync role the same way** — read DB, sync metadata, redirect
+- **Signup creates profile record using service role key** (RLS bypass) before redirect
+- **Static file bypass in middleware** — must come before auth check
+- **`redirect()` from server actions triggers Chrome password save** — this works with Next.js server actions as long as input attributes are correct
+- **Error handling:** return `{ error: message }` from server actions, display in form UI
+- Proven on nexusblue-website (production, all roles, all browsers). Pattern from cain-website also validated (native form POST alternative)
 
 ---
 
@@ -790,6 +863,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v3.9 — Added Vercel AI SDK `streamText` mid-stream error leakage gotcha (CRITICAL). `toTextStreamResponse()` passes raw Anthropic 500/529/429 errors directly to users after HTTP headers are sent. Fix: wrap `textStream` in custom ReadableStream with try/catch + retry. Found during active Anthropic incident 2026-02-25
 - v4.0 — Added Next.js + Supabase Auth middleware static file bypass gotcha. Catch-all middleware matcher blocks `public/` files (Google verification HTML, PDFs, etc.) with 307 redirect to login. Fix: add file extension regex bypass before auth check. Found 2026-02-26 during Google Search Console setup
 - v4.1 — Added Chrome password manager + Next.js login form gotcha (CRITICAL). `e.preventDefault()`, server actions, and controlled inputs all prevent Chrome from detecting password save. Fix: native HTML `<form method="post">` to route handler with 303 redirect. Found 2026-02-26 after 3 failed attempts on cain-website-022026
+- v4.2 — Replaced Chrome password manager section with comprehensive "Standard Login Pattern" covering the full Supabase Auth architecture: server actions, two-source-of-truth role pattern (DB + metadata sync), auth callback, middleware with role-based routing, and Chrome password manager input attributes. Reference implementation: nexusblue-website. Validated on production across all roles and browsers
 
 ---
 
