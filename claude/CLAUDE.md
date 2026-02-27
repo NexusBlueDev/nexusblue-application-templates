@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 4.6**
+**Version: 4.7**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -226,6 +226,7 @@ Every new project must have these before the first real commit:
 - [ ] `TODO.md` — create when first human action is identified; update every session
 - [ ] `README.md` — what it is, how to run it, one-line architecture summary
 - [ ] `.env.example` — if any environment variables are required (even one)
+- [ ] `package.json` engines field — `"engines": { "node": ">=22.0.0" }` (JS/TS projects only)
 - [ ] `.gitignore` — at minimum: `.env`, `*.env`, `!.env.example`, `node_modules/`, `__pycache__/`, `.DS_Store`, `NUL`, `Thumbs.db`, `desktop.ini`
 - [ ] `.vscode/settings.json` — `{"chat.useClaudeHooks": true}` to enable Claude Code hooks
 
@@ -329,6 +330,7 @@ Update auto-memory when you discover stable patterns, recurring issues, or proje
 Before introducing any new tool, library, or service, check whether these solve the problem:
 
 ### Core Development
+- **Node.js 22+ LTS** — Required runtime for all JS/TS projects. Managed via nvm on the Droplet (`nvm use 22`). Node 20 is available as fallback but EOL. Every new project's `package.json` must include `"engines": { "node": ">=22.0.0" }`.
 - **Python** — Backend, scripting, automation, data pipelines
 - **Next.js + TypeScript** — Web applications, SSR/SSG, API routes
 - **HTML5 + CSS3 + Vanilla JS (ES5)** — Static web apps, PWAs, expo booth tools
@@ -341,7 +343,7 @@ Before introducing any new tool, library, or service, check whether these solve 
 - **GitHub Pages** — Static HTML5 apps (PWAs, game apps)
 
 ### Development Environment
-- **DigitalOcean Droplet (nexusblue-dev)** — Primary dev environment. All code and tools live here. Connect via VS Code Remote-SSH (`ssh nexusblue-dev`). No local installs beyond VS Code + SSH key.
+- **DigitalOcean Droplet (nexusblue-dev-hub)** — Primary dev environment (8 vCPU / 16 GB RAM / Ubuntu 22.04 LTS). All code and tools live here. Connect via VS Code Remote-SSH (`ssh nexusblue-dev`). No local installs beyond VS Code + SSH key.
 - **VS Code + Remote-SSH** — Primary editor, connected to Droplet
 - **Git Bash** — Windows terminal for local scripts (Unix syntax on Windows — see Windows & OneDrive section)
 - **Chocolatey** — Windows package management (local machine setup only)
@@ -559,6 +561,60 @@ desktop.ini
 4. HANDOFF.md is current
 5. Commit message follows convention
 6. **After push: run `./scripts/deploy.sh`** if the project is Vercel-hosted. Vercel does NOT auto-deploy from the Droplet — every push must be followed by an explicit deploy, or the live site won't update.
+
+---
+
+## Droplet Health & Maintenance
+
+The Droplet is the single development environment for all projects. Keeping it healthy prevents cascading issues across every project.
+
+### Session Start Health Check
+
+At the start of every session (after reading HANDOFF.md/TODO.md), run a quick health check:
+
+```bash
+free -h | head -2 && echo "---" && df -h / | tail -1 && echo "---" && uptime
+```
+
+**Alert thresholds — flag to the user if any are hit:**
+
+| Metric | Warning | Critical |
+|--------|---------|----------|
+| **RAM available** | < 4 GB | < 2 GB |
+| **Swap usage** | Any swap in use | > 1 GB swap |
+| **Disk usage** | > 70% | > 85% |
+| **Load average (1 min)** | > 8 (1x cores) | > 16 (2x cores) |
+
+If a critical threshold is hit, flag it immediately — do not start work until the issue is understood. Common causes: orphaned `node` processes from crashed dev servers, large `node_modules` bloat, log files filling disk.
+
+### Proactive Maintenance Rules
+
+- **Kill orphaned processes.** Before starting a dev server, check if one is already running on the same port: `lsof -i :PORT`. Kill stale processes rather than picking a new port.
+- **Use `npm ci` over `npm install`** for existing projects — it's faster, deterministic, and won't modify the lockfile. Use `npm install` only when intentionally adding/updating dependencies.
+- **Don't leave dev servers running** between sessions. Stop them when done. They consume 100-300 MB each and leak memory over time.
+- **Clean build caches periodically.** `.next/cache` and `node_modules/.cache` can grow silently. If disk is running low, these are safe to delete.
+- **One Claude Code instance per project.** Multiple instances on the same project duplicate file watchers and memory usage.
+
+### Unattended Security Upgrades
+
+The Droplet runs `unattended-upgrades` for automatic security patches. This handles kernel, OpenSSL, curl, and other critical packages without manual intervention. The configuration:
+- Security updates: **auto-installed daily**
+- Non-security updates: **manual only** (prevent unexpected breaking changes)
+- Auto-reboot: **disabled** (reboots are manual to avoid disrupting active work)
+
+After a reboot (e.g., Droplet resize, manual restart), check for pending kernel upgrades: `uname -r` vs `dpkg -l linux-image-virtual | tail -1`.
+
+### Swap as Safety Net
+
+A 4 GB swap file exists at `/swapfile` as an OOM-kill prevention safety net. With 16 GB RAM, swap should **never be actively used** during normal operation. If `free -h` shows swap in use, it means RAM is under pressure — investigate, don't ignore it.
+
+### Node.js Version Enforcement
+
+- **Default runtime:** Node 22 LTS (managed via nvm, symlinked at `~/.local/bin/node`)
+- **Fallback:** Node 20 available via `nvm use 20` (EOL, use only for legacy compatibility)
+- **Every JS/TS project** must have `"engines": { "node": ">=22.0.0" }` in `package.json`
+- **Vercel auto-detects** the engines field and uses the correct Node version for builds
+- When upgrading Node in the future, update the symlinks: `ln -sf ~/.nvm/versions/node/vX.Y.Z/bin/{node,npm,npx} ~/.local/bin/`
 
 ---
 
@@ -1036,6 +1092,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v4.4 — Added preview environment pattern with `nexusblue.ai` wildcard domain. Wildcard CNAME (`*.nexusblue.ai → cname.vercel-dns.com`) set up in Namecheap — no per-project DNS changes needed. Each project uses `dev` branch → `./scripts/deploy.sh preview` → `[app-name].nexusblue.ai`. Updated deploy script template with preview support. Added DOMAINS.md registry for subdomain assignments. Vercel Deployment Protection (SSO) must be disabled for apps with their own auth. Found 2026-02-27 on pw-app
 - v4.5 — Added Serwist (PWA service worker) auth route caching gotcha (CRITICAL). Serwist's `defaultCache` includes runtime caching strategies that cache auth routes, server actions, and API routes. `cacheOnNavigation: true` caches page navigations that become stale on auth state changes. Fix: add explicit `NetworkOnly` rules for auth pages, server actions, and API routes before `defaultCache` in runtimeCaching array, and set `cacheOnNavigation: false`. Found 2026-02-27 on pw-app — login broken on production after PWA setup, worked in dev
 - v4.6 — Added Environment Variable Setup Protocol (CRITICAL). When a plan is approved, immediately write `.env.local` with all required keys as empty placeholders (with setup URLs in comments), then STOP and ask the user to fill in keys before building dependent features. Include all credentials a service provides (API keys, service keys, DB passwords). Never proceed to deployment before keys are confirmed. Root cause: mcpc-website deployed to Vercel with empty/stale env vars because keys were never collected upfront — caused failed builds and wasted deploy cycles
+- v4.7 — Droplet upgraded to 8 vCPU / 16 GB RAM. Node.js 22 LTS set as required runtime for all projects (`"engines": { "node": ">=22.0.0" }` in package.json). Added Droplet Health & Maintenance section: session start health check with alert thresholds (RAM, swap, disk, load), proactive maintenance rules (orphan processes, npm ci, dev server cleanup, cache pruning), unattended security upgrades, swap safety net, Node version enforcement. Root cause: Droplet was running 2 vCPU / 4 GB RAM with 75% swap usage and load average of 20 — silently degrading all development work
 
 ---
 
