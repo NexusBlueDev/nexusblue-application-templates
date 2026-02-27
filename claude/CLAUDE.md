@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 4.4**
+**Version: 4.5**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -905,6 +905,65 @@ export async function middleware(request: NextRequest) {
 
 ---
 
+### Serwist (PWA Service Worker) — Auth Route Caching Conflict (CRITICAL)
+
+**Symptom:** Users cannot log in, or see stale/broken pages after logging out and back in. Login form submits but never completes. Works fine in dev (no service worker), fails in production.
+
+**Root cause:** Serwist's `defaultCache` (from `@serwist/next/worker`) includes `StaleWhileRevalidate` and `NetworkFirst` runtime caching strategies that match auth-related routes. Server actions (POST with `Next-Action` header), login pages, and API routes all get cached responses served instead of hitting the server. Additionally, `cacheOnNavigation: true` caches full HTML page navigations, which become stale when auth state changes (login/logout).
+
+**Fix — add explicit `NetworkOnly` rules before `defaultCache` in the service worker:**
+
+```typescript
+// src/app/sw.ts
+import { defaultCache } from "@serwist/next/worker";
+import { Serwist, NetworkOnly } from "serwist";
+
+const authNetworkOnly = new NetworkOnly();
+const neverCacheRoutes = [
+  // Server actions (Next.js POST with action header)
+  {
+    matcher: ({ request }: { request: Request }) =>
+      request.method === "POST" && request.headers.has("Next-Action"),
+    handler: authNetworkOnly,
+  },
+  // Auth pages
+  {
+    matcher: ({ url }: { url: URL }) =>
+      url.pathname === "/login" ||
+      url.pathname === "/reset-password" ||
+      url.pathname.startsWith("/auth/"),
+    handler: authNetworkOnly,
+  },
+  // All API routes
+  {
+    matcher: ({ url }: { url: URL }) => url.pathname.startsWith("/api/"),
+    handler: authNetworkOnly,
+  },
+];
+
+const serwist = new Serwist({
+  precacheEntries: self.__SW_MANIFEST,
+  skipWaiting: true,
+  clientsClaim: true,
+  navigationPreload: true,
+  runtimeCaching: [...neverCacheRoutes, ...defaultCache],
+});
+```
+
+**And in `next.config.ts` (withSerwistInit):**
+```typescript
+cacheOnNavigation: false,  // Auth state changes make cached navigations stale
+```
+
+**Rules:**
+- NEVER let `defaultCache` handle auth routes, API routes, or server actions
+- `neverCacheRoutes` must come BEFORE `defaultCache` in the `runtimeCaching` array (first match wins)
+- Set `cacheOnNavigation: false` — page navigations must always hit the server to check auth
+- After deploying service worker changes, users need a hard refresh (Ctrl+Shift+R) to pick up the new worker
+- Found 2026-02-27 on pw-app — login was broken on production after PWA setup, worked fine in dev
+
+---
+
 ## Continuous Improvement Loop
 
 This is a **living document**. As we work across projects, we learn. Those learnings should improve all future work.
@@ -934,6 +993,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v4.2 — Replaced Chrome password manager section with comprehensive "Standard Login Pattern" covering the full Supabase Auth architecture: server actions, two-source-of-truth role pattern (DB + metadata sync), auth callback, middleware with role-based routing, and Chrome password manager input attributes. Reference implementation: nexusblue-website. Validated on production across all roles and browsers
 - v4.3 — Added New Project isolation rule to Session Start Protocol. When creating a brand new project, do NOT explore or read other projects on the Droplet — scaffold from documented standards in this CLAUDE.md, not from scanning unrelated repos. Prevents wasted time and context pollution. Root cause: sectorius-website session attempted to explore 3 existing projects before scaffolding, adding unnecessary delay
 - v4.4 — Added preview environment pattern with `nexusblue.ai` wildcard domain. Wildcard CNAME (`*.nexusblue.ai → cname.vercel-dns.com`) set up in Namecheap — no per-project DNS changes needed. Each project uses `dev` branch → `./scripts/deploy.sh preview` → `[app-name].nexusblue.ai`. Updated deploy script template with preview support. Added DOMAINS.md registry for subdomain assignments. Vercel Deployment Protection (SSO) must be disabled for apps with their own auth. Found 2026-02-27 on pw-app
+- v4.5 — Added Serwist (PWA service worker) auth route caching gotcha (CRITICAL). Serwist's `defaultCache` includes runtime caching strategies that cache auth routes, server actions, and API routes. `cacheOnNavigation: true` caches page navigations that become stale on auth state changes. Fix: add explicit `NetworkOnly` rules for auth pages, server actions, and API routes before `defaultCache` in runtimeCaching array, and set `cacheOnNavigation: false`. Found 2026-02-27 on pw-app — login broken on production after PWA setup, worked in dev
 
 ---
 
