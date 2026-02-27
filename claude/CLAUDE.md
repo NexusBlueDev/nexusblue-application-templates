@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 4.3**
+**Version: 4.4**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -401,17 +401,37 @@ desktop.ini
    #!/bin/bash
    set -e
    VERCEL_TOKEN="${VERCEL_TOKEN:-$(grep '^VERCEL_TOKEN=' .env.local 2>/dev/null | cut -d= -f2-)}"
+   TEAM_ID="team_hWt6xTS7kGfR781smAzdmvzV"
    GH_REPO_ID=YOUR-REPO-ID
-   echo "Deploying YOUR-PROJECT to Vercel production..."
-   RESPONSE=$(curl -s -X POST "https://api.vercel.com/v13/deployments?teamId=nexus-blue-dev" \
+   if [ -z "$VERCEL_TOKEN" ]; then
+     echo "Error: VERCEL_TOKEN not found in env or .env.local"
+     exit 1
+   fi
+   # Usage: ./scripts/deploy.sh [preview]
+   TARGET="${1:-production}"
+   if [ "$TARGET" = "preview" ]; then
+     REF="dev"
+     TARGET_JSON=""
+     echo "Deploying YOUR-PROJECT to Vercel PREVIEW from dev branch..."
+   else
+     REF="main"
+     TARGET_JSON="\"target\":\"production\","
+     echo "Deploying YOUR-PROJECT to Vercel PRODUCTION from main branch..."
+   fi
+   RESPONSE=$(curl -s -X POST "https://api.vercel.com/v13/deployments?teamId=$TEAM_ID" \
      -H "Authorization: Bearer $VERCEL_TOKEN" \
      -H "Content-Type: application/json" \
-     -d "{\"name\":\"YOUR-PROJECT\",\"target\":\"production\",\"gitSource\":{\"type\":\"github\",\"org\":\"NexusBlueDev\",\"repo\":\"YOUR-REPO\",\"repoId\":$GH_REPO_ID,\"ref\":\"main\"}}")
+     -d "{\"name\":\"YOUR-PROJECT\",${TARGET_JSON}\"gitSource\":{\"type\":\"github\",\"org\":\"NexusBlueDev\",\"repo\":\"YOUR-REPO\",\"repoId\":$GH_REPO_ID,\"ref\":\"$REF\"}}")
    DEPLOY_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id','ERROR'))")
+   if [ "$DEPLOY_ID" = "ERROR" ] || [ -z "$DEPLOY_ID" ]; then
+     echo "Deploy failed to start:"
+     echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
+     exit 1
+   fi
    echo "Deployment ID: $DEPLOY_ID"
    for i in $(seq 1 20); do
      sleep 15
-     STATE=$(curl -s "https://api.vercel.com/v13/deployments/$DEPLOY_ID" \
+     STATE=$(curl -s "https://api.vercel.com/v13/deployments/$DEPLOY_ID?teamId=$TEAM_ID" \
        -H "Authorization: Bearer $VERCEL_TOKEN" \
        | python3 -c "import sys,json; print(json.load(sys.stdin).get('readyState','?'))")
      echo "  $i: $STATE"
@@ -422,7 +442,9 @@ desktop.ini
    ```
 5. `chmod +x scripts/deploy.sh`
 
-**Deploy workflow:** `git push origin main && ./scripts/deploy.sh`
+**Deploy workflow:**
+- **Production:** `git push origin main && ./scripts/deploy.sh`
+- **Preview:** `git push origin dev && ./scripts/deploy.sh preview`
 
 > **Do NOT use git post-push hooks for deployment.** Hooks are not committed to the repo, break silently when hooks directory is reset, and make deployments invisible/automatic. The explicit `./scripts/deploy.sh` call is intentional — you control when production is updated.
 
@@ -434,6 +456,49 @@ desktop.ini
 - Rotate the token at vercel.com if it is ever shared or compromised
 - Run `npm run build` locally to catch TypeScript errors before pushing
 - Vercel environment variables for the app are set in the Vercel dashboard, not in `.env` files
+
+### Preview Environments + Custom Domains (nexusblue.ai)
+
+**DNS:** A wildcard CNAME (`*.nexusblue.ai → cname.vercel-dns.com`) is configured in Namecheap. Any subdomain of `nexusblue.ai` automatically resolves to Vercel. No DNS changes needed per project — just add the domain to the Vercel project.
+
+**Pattern:** Every Vercel-hosted project uses a `dev` branch for preview/staging:
+
+| Branch | Target | Domain | Purpose |
+|--------|--------|--------|---------|
+| `main` | production | Vercel auto-domain (or custom production domain) | Live / client-facing |
+| `dev` | preview | `[app-name].nexusblue.ai` | Testing / staging |
+
+**Setup (once per project):**
+
+1. Create `dev` branch: `git checkout -b dev && git push -u origin dev`
+2. Add preview domain to Vercel via API:
+   ```bash
+   VERCEL_TOKEN=$(grep '^VERCEL_TOKEN=' .env.local | cut -d= -f2-)
+   curl -s -X POST "https://api.vercel.com/v10/projects/YOUR-PROJECT/domains?teamId=nexus-blue-dev" \
+     -H "Authorization: Bearer $VERCEL_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"name":"YOUR-PROJECT.nexusblue.ai","gitBranch":"dev"}'
+   ```
+3. Disable Vercel Deployment Protection (SSO) if the app has its own auth:
+   ```bash
+   curl -s -X PATCH "https://api.vercel.com/v9/projects/YOUR-PROJECT?teamId=nexus-blue-dev" \
+     -H "Authorization: Bearer $VERCEL_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"ssoProtection":null}'
+   ```
+4. Deploy script already supports preview: `./scripts/deploy.sh preview`
+
+**Workflow:**
+- Develop on `dev` → push → `./scripts/deploy.sh preview` → test at `[app-name].nexusblue.ai`
+- When ready: merge `dev` → `main` → push → `./scripts/deploy.sh` → live in production
+
+**Domain registry:** See `/home/nexusblue/dev/nexusblue-application-templates/DOMAINS.md` for a list of all `*.nexusblue.ai` subdomain assignments. Update it when adding a new project.
+
+**Rules:**
+- Never add individual CNAME records in Namecheap — the wildcard handles everything
+- Always add the domain to Vercel via API (or dashboard) and tie it to the `dev` branch
+- Production domains are separate — use the Vercel auto-domain or a dedicated production domain
+- Vercel Deployment Protection (SSO) must be disabled for projects with their own auth, or preview URLs return 401
 
 ### Supabase
 - **Edge Functions require explicit deployment** — `npx supabase functions deploy [name] --no-verify-jwt --project-ref [ref]`.
@@ -867,6 +932,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v4.1 — Added Chrome password manager + Next.js login form gotcha (CRITICAL). `e.preventDefault()`, server actions, and controlled inputs all prevent Chrome from detecting password save. Fix: native HTML `<form method="post">` to route handler with 303 redirect. Found 2026-02-26 after 3 failed attempts on cain-website-022026
 - v4.2 — Replaced Chrome password manager section with comprehensive "Standard Login Pattern" covering the full Supabase Auth architecture: server actions, two-source-of-truth role pattern (DB + metadata sync), auth callback, middleware with role-based routing, and Chrome password manager input attributes. Reference implementation: nexusblue-website. Validated on production across all roles and browsers
 - v4.3 — Added New Project isolation rule to Session Start Protocol. When creating a brand new project, do NOT explore or read other projects on the Droplet — scaffold from documented standards in this CLAUDE.md, not from scanning unrelated repos. Prevents wasted time and context pollution. Root cause: sectorius-website session attempted to explore 3 existing projects before scaffolding, adding unnecessary delay
+- v4.4 — Added preview environment pattern with `nexusblue.ai` wildcard domain. Wildcard CNAME (`*.nexusblue.ai → cname.vercel-dns.com`) set up in Namecheap — no per-project DNS changes needed. Each project uses `dev` branch → `./scripts/deploy.sh preview` → `[app-name].nexusblue.ai`. Updated deploy script template with preview support. Added DOMAINS.md registry for subdomain assignments. Vercel Deployment Protection (SSO) must be disabled for apps with their own auth. Found 2026-02-27 on pw-app
 
 ---
 
