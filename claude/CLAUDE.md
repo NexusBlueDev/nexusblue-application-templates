@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 4.5**
+**Version: 4.6**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -201,7 +201,8 @@ Documents must stay current throughout the session — not just at the end.
 | Human action identified | Add to `TODO.md` immediately |
 | Bug fixed | Note fix in `HANDOFF.md`; remove from Known Issues if listed |
 | Architecture decision made | Update `ARCHITECTURE.md` |
-| New env var added | Update `.env.example` |
+| New env var added | Update `.env.example` AND `.env.local` template, ask user to fill in keys |
+| Plan approved with new services | Write `.env.local` template with all required keys, STOP for user to fill in |
 | Session ends | Full update: `HANDOFF.md` + `TODO.md` + commit + push |
 
 **The test:** If a developer picks up the project right now without talking to anyone, can they understand what's done, what's next, and exactly what they need from the client? If not, the documents are not current enough.
@@ -227,6 +228,46 @@ Every new project must have these before the first real commit:
 - [ ] `.env.example` — if any environment variables are required (even one)
 - [ ] `.gitignore` — at minimum: `.env`, `*.env`, `!.env.example`, `node_modules/`, `__pycache__/`, `.DS_Store`, `NUL`, `Thumbs.db`, `desktop.ini`
 - [ ] `.vscode/settings.json` — `{"chat.useClaudeHooks": true}` to enable Claude Code hooks
+
+---
+
+## Environment Variable Setup Protocol (CRITICAL)
+
+When a project plan is approved or when any new service is identified that requires API keys, credentials, or configuration:
+
+### 1. Populate `.env.local` immediately after plan approval
+
+As soon as the implementation plan is finalized and services are identified, **update `.env.local` with all required keys as empty placeholders** — organized by service with setup URLs in comments. Include **all** credentials the service provides, including passwords (e.g., Supabase database password).
+
+```bash
+# Supabase — Create project at https://supabase.com/dashboard → New Project
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_DB_PASSWORD=
+
+# Anthropic — Get key at https://console.anthropic.com/settings/keys
+ANTHROPIC_API_KEY=
+
+# [Service Name] — [Setup URL]
+# KEY_NAME=
+```
+
+### 2. Stop and wait for the user to fill in the keys
+
+After writing the `.env.local` template, **ask the user to create the required services and fill in the keys before proceeding with any implementation that depends on them.** Do not proceed to build features that require these keys until they are confirmed.
+
+### 3. Set Vercel env vars only after keys are confirmed
+
+Once the user has filled in `.env.local`, then set the corresponding env vars on the Vercel project. Never set placeholder/empty values on Vercel.
+
+**Rules:**
+- `.env.local` template is written at **plan approval time**, not at deployment time
+- Include **every** credential a service provides — API keys, service keys, database passwords, project URLs
+- Always include the setup URL in a comment above each service group so the user knows where to go
+- **STOP** and explicitly ask the user to fill in keys before building features that depend on them
+- Update `.env.example` (committed to repo) at the same time as `.env.local` (gitignored)
+- When a new service is added mid-project, immediately update both `.env.local` and `.env.example`, then ask the user
 
 ---
 
@@ -994,6 +1035,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v4.3 — Added New Project isolation rule to Session Start Protocol. When creating a brand new project, do NOT explore or read other projects on the Droplet — scaffold from documented standards in this CLAUDE.md, not from scanning unrelated repos. Prevents wasted time and context pollution. Root cause: sectorius-website session attempted to explore 3 existing projects before scaffolding, adding unnecessary delay
 - v4.4 — Added preview environment pattern with `nexusblue.ai` wildcard domain. Wildcard CNAME (`*.nexusblue.ai → cname.vercel-dns.com`) set up in Namecheap — no per-project DNS changes needed. Each project uses `dev` branch → `./scripts/deploy.sh preview` → `[app-name].nexusblue.ai`. Updated deploy script template with preview support. Added DOMAINS.md registry for subdomain assignments. Vercel Deployment Protection (SSO) must be disabled for apps with their own auth. Found 2026-02-27 on pw-app
 - v4.5 — Added Serwist (PWA service worker) auth route caching gotcha (CRITICAL). Serwist's `defaultCache` includes runtime caching strategies that cache auth routes, server actions, and API routes. `cacheOnNavigation: true` caches page navigations that become stale on auth state changes. Fix: add explicit `NetworkOnly` rules for auth pages, server actions, and API routes before `defaultCache` in runtimeCaching array, and set `cacheOnNavigation: false`. Found 2026-02-27 on pw-app — login broken on production after PWA setup, worked in dev
+- v4.6 — Added Environment Variable Setup Protocol (CRITICAL). When a plan is approved, immediately write `.env.local` with all required keys as empty placeholders (with setup URLs in comments), then STOP and ask the user to fill in keys before building dependent features. Include all credentials a service provides (API keys, service keys, DB passwords). Never proceed to deployment before keys are confirmed. Root cause: mcpc-website deployed to Vercel with empty/stale env vars because keys were never collected upfront — caused failed builds and wasted deploy cycles
 
 ---
 
