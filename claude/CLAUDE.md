@@ -499,6 +499,7 @@ desktop.ini
 - Always add the domain to Vercel via API (or dashboard) and tie it to the `dev` branch
 - Production domains are separate — use the Vercel auto-domain or a dedicated production domain
 - Vercel Deployment Protection (SSO) must be disabled for projects with their own auth, or preview URLs return 401
+- **Ignore Vercel's "DNS Change Recommended" warning** on custom domains. Vercel suggests a project-specific CNAME (e.g., `915178...vercel-dns-016.com`) instead of the generic `cname.vercel-dns.com`. This is optional and would defeat the wildcard pattern. The wildcard CNAME works correctly — the recommendation is a performance optimization, not a requirement
 
 ### Supabase
 - **Edge Functions require explicit deployment** — `npx supabase functions deploy [name] --no-verify-jwt --project-ref [ref]`.
