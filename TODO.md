@@ -13,8 +13,8 @@
   Script: `supabase/migrations/012_organizations.sql` (to be created)
 
 - [ ] **[Dev]** Apply AppVault migrations **031 + 032 + 033** to **nexusblue-website**.
-  Required before building the `/nexusblue` super-admin portal (which needs migration 034+).
-  Check current migration # before applying — 033 was briefly double-assigned.
+  Required before building the `/nexusblue` super-admin portal (migration 037).
+  Migration numbering status: 034=appvault_consulting, 035 and 036 also confirmed taken (2026-02-28). Super-admin portal = **037**.
 
 ---
 
@@ -67,21 +67,25 @@
 
 ---
 
-## Testing & CI Implementation (Tier 1 — in progress)
+## Testing & CI Implementation
 
-- [ ] **[Dev]** Add GitHub Actions CI + Vitest to **nexusblue-website** (repoId: 1163618386)
-- [ ] **[Dev]** Set GitHub repo secrets on nexusblue-website: `VERCEL_TOKEN` + `VERCEL_TEAM_ID`
-- [ ] **[Dev]** Add GitHub Actions CI + Vitest to **pw-app** (repoId: 1168058088)
-- [ ] **[Dev]** Set GitHub repo secrets on pw-app: `VERCEL_TOKEN` + `VERCEL_TEAM_ID`
-- [ ] **[Dev]** Add GitHub Actions CI + Vitest + Playwright to **mcpc-website** (repoId: 1168606931)
-- [ ] **[Dev]** Set GitHub repo secrets on mcpc-website: `VERCEL_TOKEN` + `VERCEL_TEAM_ID`
+### Tier 1 — DONE 2026-02-28
+- [x] **[Dev]** Add GitHub Actions CI + Vitest to **nexusblue-website** (10 tests) — done 2026-02-28
+- [x] **[Dev]** Add GitHub Actions CI + Vitest to **pw-app** (21 tests: auth, AI, autosave, reports) — done 2026-02-28
+- [x] **[Dev]** Add GitHub Actions CI + Vitest + Playwright to **mcpc-website** (8 tests) — done 2026-02-28
+- [x] **[Dev]** Set GitHub repo secrets (`VERCEL_TOKEN` + `VERCEL_TEAM_ID`) on all 3 repos — done 2026-02-28
 
-## Testing & CI Implementation (Tier 2 — next session)
-
+### Tier 2 — Next Session
 - [ ] **[Dev]** Add GitHub Actions CI + Vitest to **cnc-platform**
 - [ ] **[Dev]** Add GitHub Actions CI + Vitest to **cain-website-022026**
 - [ ] **[Dev]** Add GitHub Actions CI + Vitest to **pet_scheduler**
 - [ ] **[Dev]** Add GitHub Actions CI + Vitest to **sectorius-website**
+
+### Guardrails + Hardening — Next Session
+- [ ] **[Dev]** GitHub branch protection on all repos: require CI pass + no force push to main
+- [ ] **[Dev]** Add `npm audit --audit-level=high` step to CI template (`docs/github-ci-template.yml`)
+- [ ] **[Dev]** Create `scripts/rollback.sh` — promote prior Vercel deployment to production via REST API
+- [ ] **[Dev]** Add git release tagging to CI deploy jobs (auto-tag on successful main deploy)
 
 ## Completed
 
