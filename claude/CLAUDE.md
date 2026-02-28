@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 4.7**
+**Version: 4.8**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -350,7 +350,7 @@ Before introducing any new tool, library, or service, check whether these solve 
 - **OneDrive** — Business docs, assets, non-code files. Code projects moved to Droplet.
 
 ### AI Tools in Workflow
-- **Claude Code (claude-sonnet-4-6)** — Primary development copilot (this prompt)
+- **Claude Code (claude-opus-4-6)** — Primary development copilot (this prompt)
 - **Anthropic SDK** — AI integration in apps (prefer claude-sonnet-4-6 for quality, claude-haiku-4-5 for speed)
 - **Grok** — Available for AI-assisted tasks
 
@@ -373,7 +373,7 @@ Before introducing any new tool, library, or service, check whether these solve 
 - **Commit working code.** WIP goes on a branch, not main.
 - **Commit at every major phase.** Don't let the repo fall behind.
 - **Push before deploy. Always.** Code MUST be committed and pushed to `NexusBlueDev` on GitHub before any deployment to Vercel or any other hosting. Never deploy local-only code. If it's not on GitHub, it doesn't exist.
-- **Co-authorship.** Include footer: `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
+- **Co-authorship.** Include footer: `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>`
 
 ---
 
@@ -1061,6 +1061,128 @@ cacheOnNavigation: false,  // Auth state changes make cached navigations stale
 
 ---
 
+## Test Account Seeding Standard (Supabase Auth Projects)
+
+Every project with Supabase Auth has two distinct types of test accounts. These are separate concerns and must not be conflated.
+
+### Two Account Types
+
+| Type | Purpose | Emails | Password | `must_reset_pw` |
+|------|---------|--------|----------|-----------------|
+| **NexusBlue dev** | Internal testing during development | `test-[role]@[project-slug].dev` | `NxB_dev_2026!` | `false` — frictionless for testing |
+| **Client initial** | First login credentials handed to client | Project-specific | Project-specific | `true` — client sets own password |
+
+**NexusBlue dev accounts** are standardized across all projects. Same password every time — you never need to look it up. The `.dev` TLD is unregistered and can never receive email — safe for `email_confirm: true`.
+
+**Client initial accounts** are project-specific. The client decides what email and password makes sense for their situation. Simple passwords are fine here — the `must_reset_pw` flag forces a change on first login. Document these in the project HANDOFF.md under `## Client Accounts`. **Do not standardize these** — each project's CLAUDE.md defines them.
+
+### Standard Script: `scripts/seed-accounts.sh`
+
+Every project with auth gets this script. Customize the `create_user` calls for the roles the project uses.
+
+```bash
+#!/bin/bash
+# Seed test accounts in Supabase Auth via Admin API
+# Usage: ./scripts/seed-accounts.sh
+# Requires: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local
+
+set -e
+
+SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL:-$(grep '^NEXT_PUBLIC_SUPABASE_URL=' .env.local 2>/dev/null | cut -d= -f2-)}"
+SERVICE_KEY="${SUPABASE_SERVICE_ROLE_KEY:-$(grep '^SUPABASE_SERVICE_ROLE_KEY=' .env.local 2>/dev/null | cut -d= -f2-)}"
+
+if [ -z "$SUPABASE_URL" ] || [ -z "$SERVICE_KEY" ]; then
+  echo "Error: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required in .env.local"
+  exit 1
+fi
+
+echo ""
+echo "Target: $SUPABASE_URL"
+echo "Press Ctrl+C within 5 seconds to abort..."
+sleep 5
+
+create_user() {
+  local EMAIL=$1
+  local PASSWORD=$2
+  local FULL_NAME=$3
+  local ROLE=$4
+  local MUST_RESET=${5:-false}
+
+  echo "Creating $ROLE: $EMAIL..."
+
+  RESPONSE=$(curl -s -X POST "$SUPABASE_URL/auth/v1/admin/users" \
+    -H "apikey: $SERVICE_KEY" \
+    -H "Authorization: Bearer $SERVICE_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"email\": \"$EMAIL\",
+      \"password\": \"$PASSWORD\",
+      \"email_confirm\": true,
+      \"user_metadata\": {
+        \"full_name\": \"$FULL_NAME\",
+        \"role\": \"$ROLE\",
+        \"must_reset_pw\": $MUST_RESET
+      }
+    }")
+
+  USER_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id','ERROR'))" 2>/dev/null)
+
+  if [ "$USER_ID" = "ERROR" ] || [ -z "$USER_ID" ]; then
+    MSG=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('msg', d.get('message', 'unknown error')))" 2>/dev/null)
+    echo "  Failed: $MSG"
+  else
+    echo "  Created: $USER_ID"
+  fi
+}
+
+echo ""
+echo "=== NexusBlue Dev Accounts ==="
+# One per role — customize for this project's roles
+create_user "test-admin@PROJECT-SLUG.dev" "NxB_dev_2026!" "Test Admin" "admin" false
+create_user "test-client@PROJECT-SLUG.dev" "NxB_dev_2026!" "Test Client" "client" false
+
+# === Client Initial Accounts (project-specific) ===
+# Uncomment and customize if client accounts are needed at setup time
+# create_user "client@theirdomain.com" "SimplePass1!" "Client Name" "client" true
+
+echo ""
+echo "=== Done ==="
+echo "NexusBlue dev password (all roles): NxB_dev_2026!"
+echo "Add created accounts to HANDOFF.md ## Test Accounts section."
+```
+
+### HANDOFF.md `## Test Accounts` Block
+
+After running the seed script, add this to HANDOFF.md:
+
+```markdown
+## Test Accounts
+
+### NexusBlue Dev
+| Role   | Email                        | Password      |
+|--------|------------------------------|---------------|
+| admin  | test-admin@PROJECT-SLUG.dev  | NxB_dev_2026! |
+| client | test-client@PROJECT-SLUG.dev | NxB_dev_2026! |
+
+### Client Initial Credentials
+| Role   | Email               | Notes                          |
+|--------|---------------------|--------------------------------|
+| admin  | admin@theirdomain   | must_reset_pw on first login   |
+
+Run `./scripts/seed-accounts.sh` to recreate dev accounts if needed.
+```
+
+### Rules
+- **NexusBlue dev password is `NxB_dev_2026!`** — same for every project, every role. You never look it up.
+- **`email_confirm: true` always** — test accounts must never wait on email. The `.dev` TLD ensures no real email is ever sent.
+- **NexusBlue dev: `must_reset_pw: false`** — frictionless. Client initial: `must_reset_pw: true` — client sets their own password.
+- **5-second abort window** — the script prints the target URL and pauses so you can abort before hitting the wrong project.
+- **Document all accounts in HANDOFF.md** — `## Test Accounts` block, not prose.
+- **Never commit credentials** — seed script is committed (no secrets in it), passwords are documented in HANDOFF.md (not committed to public repos, and HANDOFF.md is gitignored for private client projects as needed).
+- **Seed script lives at `scripts/seed-accounts.sh`** — same location every project. Pair it with `scripts/deploy.sh`.
+
+---
+
 ## Continuous Improvement Loop
 
 This is a **living document**. As we work across projects, we learn. Those learnings should improve all future work.
@@ -1092,6 +1214,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v4.4 — Added preview environment pattern with `nexusblue.ai` wildcard domain. Wildcard CNAME (`*.nexusblue.ai → cname.vercel-dns.com`) set up in Namecheap — no per-project DNS changes needed. Each project uses `dev` branch → `./scripts/deploy.sh preview` → `[app-name].nexusblue.ai`. Updated deploy script template with preview support. Added DOMAINS.md registry for subdomain assignments. Vercel Deployment Protection (SSO) must be disabled for apps with their own auth. Found 2026-02-27 on pw-app
 - v4.5 — Added Serwist (PWA service worker) auth route caching gotcha (CRITICAL). Serwist's `defaultCache` includes runtime caching strategies that cache auth routes, server actions, and API routes. `cacheOnNavigation: true` caches page navigations that become stale on auth state changes. Fix: add explicit `NetworkOnly` rules for auth pages, server actions, and API routes before `defaultCache` in runtimeCaching array, and set `cacheOnNavigation: false`. Found 2026-02-27 on pw-app — login broken on production after PWA setup, worked in dev
 - v4.6 — Added Environment Variable Setup Protocol (CRITICAL). When a plan is approved, immediately write `.env.local` with all required keys as empty placeholders (with setup URLs in comments), then STOP and ask the user to fill in keys before building dependent features. Include all credentials a service provides (API keys, service keys, DB passwords). Never proceed to deployment before keys are confirmed. Root cause: mcpc-website deployed to Vercel with empty/stale env vars because keys were never collected upfront — caused failed builds and wasted deploy cycles
+- v4.8 — Added Test Account Seeding Standard. Two account types: NexusBlue dev accounts (`test-[role]@[project-slug].dev` / `NxB_dev_2026!`, `must_reset_pw: false`) for internal testing, and client initial accounts (project-specific, `must_reset_pw: true`) for client onboarding. Standard `scripts/seed-accounts.sh` template using Supabase Admin API with 5-second abort window. Credentials documented in HANDOFF.md `## Test Accounts` block. Root cause: pw-app used inconsistent passwords across sessions; credential documentation was buried in HANDOFF.md prose.
 - v4.7 — Droplet upgraded to 8 vCPU / 16 GB RAM. Node.js 22 LTS set as required runtime for all projects (`"engines": { "node": ">=22.0.0" }` in package.json). Added Droplet Health & Maintenance section: session start health check with alert thresholds (RAM, swap, disk, load), proactive maintenance rules (orphan processes, npm ci, dev server cleanup, cache pruning), unattended security upgrades, swap safety net, Node version enforcement. Root cause: Droplet was running 2 vCPU / 4 GB RAM with 75% swap usage and load average of 20 — silently degrading all development work
 
 ---
