@@ -1,6 +1,6 @@
 # NexusBlue Module Standard
 
-> **Version:** 1.0
+> **Version:** 1.1
 > **Applies to:** All feature modules in all NexusBlue Next.js + Supabase projects
 > **Canonical location:** `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md`
 > **Install to project:** `{project}/docs/modules/MODULE_STANDARD.md` (copy or symlink)
@@ -77,6 +77,13 @@ Before any code is written, these files MUST exist:
 **AI modules additionally require:**
 - [ ] `docs/modules/{module}/AGENTS.md` — agent definitions
 - [ ] `src/lib/{module}/prompt-docs/` — prompt reference documents
+
+**All modules additionally require (before migration is written):**
+- [ ] Billing unit defined in README
+- [ ] Role capability matrix in README
+- [ ] `{prefix}_usage` table included in core migration
+- [ ] `module_defaults` seed rows included in core migration
+- [ ] Standalone viability declared (yes/no) in README
 
 **Structure before implementation.** If these files don't exist, the module is not ready to build.
 
@@ -273,6 +280,157 @@ ON CONFLICT (key) DO NOTHING;
 
 ---
 
+## AI-First Requirements (All AI Modules)
+
+Every module that uses LLMs must follow these rules. An "AI module" is any module with agents defined in AGENTS.md.
+
+### AI is the Primary Interface
+
+- AI does the work. Humans approve outcomes — they don't configure inputs.
+- Streaming is the default for all user-facing agent calls. Never make users wait for a complete response.
+- Every state machine has at least one AI-generated → human-approved checkpoint before data is published.
+
+### Agent Design Rules
+
+- Every agent has one task. Multi-step work = multiple agents.
+- Every agent runs through `executeAgent()` from `src/lib/agents/base.ts` — never raw API calls in route handlers.
+- Tool use in agents is always explicit. If an agent should not access the web, `tool_choice: 'none'` is enforced at the API call level, not just in the system prompt.
+- Gate agents (binary judgments) are code-first. Use LLM only when a deterministic check cannot do the job.
+
+### Prompt Management Rules
+
+- System prompts >1,024 tokens use `cache_control: { type: 'ephemeral' }` — always.
+- Long prompts live in `src/lib/{module}/prompt-docs/NN_{name}.md` — never inline in route handlers.
+- Every prompt document includes: agent key, model, max_tokens, input/output spec, and a self-audit checklist.
+- Gate check prompts are always cached — they run on every response.
+
+### AI Required Checklist
+
+Every AI module README must include:
+
+- [ ] Agent stack table (agent key | model | task | max_tokens)
+- [ ] Gate mapping table (gate | implementation type | trigger)
+- [ ] Streaming declared: yes/no per agent
+- [ ] Tool access declared: none / specific tools listed
+- [ ] Prompt caching declared: which agents cache and why
+
+---
+
+## Monetization Requirements (All Modules)
+
+Every module must be monetization-ready before migration is written. This is not optional — it prevents retroactive billing gaps and enables standalone app packaging.
+
+### Required Definitions (Before Migration)
+
+| Item | What to Define |
+|------|---------------|
+| **Billing unit** | The atomic thing counted per org per billing period (e.g., "app packs", "workbench queries", "scans") |
+| **Min tier** | Which plan tier unlocks base module access |
+| **Action tiers** | Which plan tier unlocks each specific action gate |
+| **Usage cap** | Default cap per billing period per tier (can be overridden) |
+| **Standalone viability** | Yes/No — can this module be packaged as a standalone app? |
+
+### Usage Metering Table
+
+Every module ships a `{prefix}_usage` table in its core migration:
+
+```sql
+CREATE TABLE IF NOT EXISTS public.{prefix}_usage (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id  UUID NOT NULL REFERENCES public.profiles(id),
+  billing_period   TEXT NOT NULL,  -- 'YYYY-MM'
+  units_used       INT DEFAULT 0,
+  unit_type        TEXT NOT NULL,  -- matches billing unit definition
+  created_at       TIMESTAMPTZ DEFAULT now(),
+  updated_at       TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (organization_id, billing_period, unit_type)
+);
+```
+
+**Rule:** Increment usage on every billable action via a dedicated lib function. Metering is server-side only — never trust client counts.
+
+### Standard Monetization Tiers
+
+Every module supports three commercial modes:
+
+| Mode | Description | Who Uses It |
+|------|-------------|------------|
+| **Embedded** | Included in nexusblue-website subscription plan | NexusBlue platform clients |
+| **Managed Product** | Sold as a standalone managed service (NexusBlue operates) | Clients who want results without access |
+| **Standalone App** | White-label app client deploys and administers | Clients who want to own and run it |
+
+Declare which modes the module supports in its README. Not all modules support all three modes.
+
+### Admin Override Control
+
+Org admins can control capability access within their plan limits via the `feature_overrides` table (existing) and `module_permissions` table (new, per module). NexusBlue sets the ceiling — org admins configure within it.
+
+```
+NexusBlue sets plan tier → defines what features are available
+Org admin configures     → which roles in their org can access which features
+Feature overrides        → NexusBlue can elevate any org above their plan (for trials, custom contracts)
+```
+
+---
+
+## Role Capability Matrix
+
+Every module defines which roles can do what. This is declared in the module's README and enforced in API routes and UI.
+
+### Standard Matrix Format
+
+```
+| Capability           | admin | employee | partner | client |
+|---------------------|-------|----------|---------|--------|
+| View module          | ✓     | ✓        | ✓       | ✓      |
+| Trigger action       | ✓     | ✓        | —       | —      |
+| Review/approve       | ✓     | ✓        | —       | —      |
+| Export results       | ✓     | ✓        | ✓       | —      |
+| Client workbench     | ✓     | ✓        | —       | ✓      |
+| Configure module     | ✓     | —        | —       | —      |
+```
+
+### Org Admin Capability Toggles
+
+Org admins can turn off any capability their plan allows for specific roles in their org. They cannot enable capabilities their plan does not include.
+
+Two tables support this:
+
+```sql
+-- module_permissions: per-org, per-role toggles
+-- (one row per org × role × module capability)
+CREATE TABLE IF NOT EXISTS public.module_permissions (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id  UUID NOT NULL REFERENCES public.profiles(id),
+  module_key       TEXT NOT NULL,  -- e.g. 'appvault'
+  role             TEXT NOT NULL,  -- CHECK IN ('admin', 'employee', 'partner', 'client')
+  capability       TEXT NOT NULL,  -- matches capability name in role matrix
+  enabled          BOOLEAN DEFAULT true,
+  set_by           UUID REFERENCES public.profiles(id),
+  updated_at       TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (organization_id, module_key, role, capability)
+);
+
+-- module_defaults: default capabilities per plan tier (source of truth)
+CREATE TABLE IF NOT EXISTS public.module_defaults (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  module_key       TEXT NOT NULL,
+  role             TEXT NOT NULL,
+  capability       TEXT NOT NULL,
+  min_tier         TEXT NOT NULL,  -- minimum plan tier required
+  default_enabled  BOOLEAN DEFAULT true,
+  UNIQUE (module_key, role, capability)
+);
+```
+
+**Rule:** `module_defaults` is seeded in migration and owned by NexusBlue. `module_permissions` is written by org admins at runtime. Always check `module_permissions` first — fall back to `module_defaults` if no override exists.
+
+### Required Role Matrix in README
+
+Every module README must include a complete role capability matrix showing all roles × all capabilities with min_tier noted where applicable.
+
+---
+
 ## API Route Conventions
 
 ```typescript
@@ -373,6 +531,11 @@ A module is portable (can be lifted into another project) when:
 - [ ] All env var dependencies are documented in `.env.example`
 - [ ] Types are in `src/types/{module}.ts` (not mixed into `index.ts`)
 - [ ] Agent registry entries are isolated (not dependent on other agents)
+- [ ] `{prefix}_usage` table exists and metering is live
+- [ ] `module_defaults` seeded with all role × capability rows
+- [ ] Role capability matrix documented and enforced in API routes
+- [ ] Billing unit documented and usage incremented on every billable action
+- [ ] Standalone viability declared
 - [ ] Documentation is current and accurate
 
 ---
@@ -382,3 +545,4 @@ A module is portable (can be lifted into another project) when:
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2026-02-28 | Initial standard — derived from WebMap + AppVault patterns |
+| 1.1 | 2026-02-28 | Added AI-first requirements, Monetization requirements (billing unit, usage table, admin tier control), Role Capability Matrix (module_permissions + module_defaults tables). Updated Required Files Checklist and Portability Checklist. |

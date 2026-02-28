@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 4.8**
+**Version: 4.9**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -322,6 +322,54 @@ Claude Code automatically manages `~/.claude/projects/[full-path]/memory/MEMORY.
 | `CLAUDE.md` | Claude only | Yes | Execution rules for this project |
 
 Update auto-memory when you discover stable patterns, recurring issues, or project-specific rules that should survive across sessions on this machine. Don't duplicate what's already in HANDOFF.md or CLAUDE.md.
+
+---
+
+## Module Standard (All NexusBlue Modules)
+
+Every feature module in every NexusBlue project follows the standard at:
+`/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md`
+
+Reference implementations: **WebMap** (nexusblue-website) and **AppVault** (nexusblue-website).
+
+### Non-Negotiable Module Rules
+
+**Structure before code:**
+- `docs/modules/{module}/` README + ARCHITECTURE + SCHEMA must exist before a line of implementation code is written
+- Billing unit and role capability matrix must be defined before the migration is written
+
+**AI-first:**
+- AI is the primary interface — humans approve outcomes, not configure inputs
+- Streaming is default for all user-facing agent calls
+- Every state machine has at least one AI-generated → human-approved checkpoint
+- All system prompts >1,024 tokens use `cache_control: { type: 'ephemeral' }`
+- Model rule: **Sonnet = generation, Haiku = judgment, Code = deterministic**
+- Never hardcode model strings in route handlers — always from agent registry
+
+**Monetization-ready:**
+- Every module defines a billing unit before migration is written
+- Every module ships a `{prefix}_usage` table for metering
+- Every module seeds `module_defaults` with role × capability rows
+- Three commercial modes: Embedded / Managed Product / Standalone App
+
+**Role capability matrix:**
+- Every module README includes a complete role matrix (admin / employee / partner / client)
+- Org admins toggle capabilities within their plan via `module_permissions` table
+- NexusBlue overrides any org via `feature_overrides` table (ceiling control)
+- `module_defaults` = NexusBlue-owned source of truth; `module_permissions` = org admin runtime config
+
+**Portability:**
+- `organization_id` on every module table — no org-blind queries
+- All lib functions take explicit parameters — no hidden global state
+- Types in `src/types/{module}.ts` — never mixed into `index.ts`
+
+### When Starting Any New Module
+
+1. Read MODULE_STANDARD.md first
+2. Create `docs/modules/{module}/` with all required files (no code yet)
+3. Define: billing unit, role matrix, standalone viability, min tier
+4. Write migration with: core tables + `{prefix}_usage` + feature gates + `module_defaults` seed
+5. Then build
 
 ---
 
@@ -1216,6 +1264,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v4.6 — Added Environment Variable Setup Protocol (CRITICAL). When a plan is approved, immediately write `.env.local` with all required keys as empty placeholders (with setup URLs in comments), then STOP and ask the user to fill in keys before building dependent features. Include all credentials a service provides (API keys, service keys, DB passwords). Never proceed to deployment before keys are confirmed. Root cause: mcpc-website deployed to Vercel with empty/stale env vars because keys were never collected upfront — caused failed builds and wasted deploy cycles
 - v4.8 — Added Test Account Seeding Standard. Two account types: NexusBlue dev accounts (`test-[role]@[project-slug].dev` / `NxB_dev_2026!`, `must_reset_pw: false`) for internal testing, and client initial accounts (project-specific, `must_reset_pw: true`) for client onboarding. Standard `scripts/seed-accounts.sh` template using Supabase Admin API with 5-second abort window. Credentials documented in HANDOFF.md `## Test Accounts` block. Root cause: pw-app used inconsistent passwords across sessions; credential documentation was buried in HANDOFF.md prose.
 - v4.7 — Droplet upgraded to 8 vCPU / 16 GB RAM. Node.js 22 LTS set as required runtime for all projects (`"engines": { "node": ">=22.0.0" }` in package.json). Added Droplet Health & Maintenance section: session start health check with alert thresholds (RAM, swap, disk, load), proactive maintenance rules (orphan processes, npm ci, dev server cleanup, cache pruning), unattended security upgrades, swap safety net, Node version enforcement. Root cause: Droplet was running 2 vCPU / 4 GB RAM with 75% swap usage and load average of 20 — silently degrading all development work
+- v4.9 — Added Module Standard as a non-negotiable global rule. Canonical standard at `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md` v1.1. Key additions: AI-first requirements (streaming default, Sonnet/Haiku/Code rule, prompt caching mandate), Monetization requirements (billing unit before migration, `{prefix}_usage` table in every module, three commercial modes: Embedded/Managed Product/Standalone App), Role Capability Matrix (module_permissions + module_defaults tables, org admin controls within NexusBlue-set ceiling). MODULE_STANDARD.md updated to v1.1 with these three sections. Reference implementations: WebMap + AppVault (nexusblue-website). Origin: AppVault architecture session 2026-02-28
 
 ---
 
