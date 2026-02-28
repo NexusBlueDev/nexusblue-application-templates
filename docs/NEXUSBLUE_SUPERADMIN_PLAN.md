@@ -6,7 +6,148 @@
 > development environment, IP catalog, AI methodology, and platform performance.
 >
 > **Status:** Planning complete — pending AppVault migrations 031+032+033 before building
-> **Version:** 1.0 — 2026-02-28
+> **Version:** 1.1 — 2026-02-28
+
+---
+
+## Super-Admin Account
+
+**Primary super-admin:** `bill@nexusblue.io`
+**Role:** `platform_role = 'nexusblue_admin'` in `profiles` (nexusblue-website Supabase)
+**Password:** Standard NxB dev password, set at seeding — `must_reset_pw = false` for dev
+
+Update `scripts/seed-accounts.sh` in nexusblue-website to seed this account:
+```bash
+create_user "bill@nexusblue.io" "NxB_dev_2026!" "Bill" "admin" false
+# Then: UPDATE profiles SET platform_role = 'nexusblue_admin' WHERE email = 'bill@nexusblue.io'
+```
+
+**Additional super-admins:** Can be added by setting `platform_role = 'nexusblue_admin'` on any profiles row. All must know the portal PIN (see PIN Security Layer below).
+
+> The legacy placeholder `nexusblue-admin@nexusblue.dev` is superseded by `bill@nexusblue.io` as the primary account. Keep the legacy account in Platform Product seed scripts (pw-app, cnc-platform, pet_scheduler) since those are separate Supabase projects — but nexusblue-website specifically uses `bill@nexusblue.io`.
+
+---
+
+## Portal Entry Point (Navigation)
+
+The `/nexusblue` portal is accessed from a **discreet menu option** in the nexusblue-website nav — visible only to users with `platform_role = 'nexusblue_admin'`.
+
+**Placement options (pick at build time):**
+- User avatar dropdown — "NexusBlue Command" as a menu item below the profile options
+- Top nav — small "NXB" badge/link visible only when `platform_role = 'nexusblue_admin'`
+
+**Behavior on click:**
+1. If PIN has not been entered this session → redirect to `/nexusblue/verify` (PIN entry)
+2. If PIN is verified and session is active → go directly to `/nexusblue` hub
+
+---
+
+## PIN Security Layer
+
+A second factor is required to enter the portal. Standard auth (`platform_role = 'nexusblue_admin'`) gets you to the menu option — but the PIN is required to enter any `/nexusblue` route.
+
+### Why
+
+The super-admin portal has cross-project read access, tenant data, agent logs, and platform credentials context. A PIN provides an extra barrier against unauthorized access even if a super-admin session is left unlocked.
+
+### Architecture
+
+| Layer | Detail |
+|-------|--------|
+| Storage | `dev_portal_config` table — `key = 'portal_pin_hash'`, value = bcrypt hash of the PIN |
+| Scope | Portal-level PIN (shared among all super-admins) — owner (`bill@nexusblue.io`) controls it |
+| Session | On successful PIN entry → server sets `nexusblue_portal` session cookie (4-hour expiry, httpOnly, sameSite=strict) |
+| Middleware | All `/nexusblue` routes check: (a) `platform_role = 'nexusblue_admin'` AND (b) valid `nexusblue_portal` cookie |
+| Change | From `/nexusblue/settings` → "Change Portal PIN" — enter current PIN, set new PIN |
+| Seed | Initial PIN set as bcrypt hash in migration 034 seed data — PIN value set in seed script only, never in plan docs or CLAUDE.md |
+
+### PIN Entry Flow (`/nexusblue/verify`)
+
+```
+User clicks "NexusBlue Command" in nav
+  → Is nexusblue_portal cookie valid?
+      YES → /nexusblue (hub)
+      NO  → /nexusblue/verify (PIN entry screen)
+            ├─ Minimal UI: NexusBlue logo + 4-digit PIN input (masked)
+            ├─ Server action: bcrypt.compare(input, stored_hash)
+            │   ├─ Match → set nexusblue_portal cookie → redirect to /nexusblue
+            │   └─ No match → error "Incorrect PIN" (no lockout for now, add later)
+            └─ Cancel → back to main portal (no access)
+```
+
+### Database Addition (Migration 034)
+
+Add to the migration schema alongside the `dev_` tables:
+
+```sql
+-- Portal config (PIN and other platform-level settings)
+CREATE TABLE IF NOT EXISTS public.dev_portal_config (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key        TEXT UNIQUE NOT NULL,
+  value      TEXT NOT NULL,
+  updated_by TEXT,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.dev_portal_config ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access on dev_portal_config"
+  ON public.dev_portal_config FOR ALL
+  USING (auth.role() = 'service_role');
+
+CREATE POLICY "NexusBlue admin full access on dev_portal_config"
+  ON public.dev_portal_config FOR ALL
+  USING ((SELECT platform_role FROM public.profiles WHERE id = auth.uid()) = 'nexusblue_admin');
+
+-- Initial PIN hash seeded from seed script (not hardcoded here)
+-- Run this separately after migration:
+-- INSERT INTO public.dev_portal_config (key, value, updated_by)
+-- VALUES ('portal_pin_hash', '[bcrypt_hash_of_initial_pin]', 'bill@nexusblue.io');
+```
+
+### Server Action Pattern (PIN verification)
+
+```typescript
+// src/lib/nexusblue/actions.ts
+import bcrypt from 'bcryptjs';
+
+export async function verifyPortalPin(pin: string) {
+  const supabase = createServiceClient();  // RLS bypass to read config
+
+  const { data } = await supabase
+    .from('dev_portal_config')
+    .select('value')
+    .eq('key', 'portal_pin_hash')
+    .single();
+
+  if (!data) return { error: 'Portal not configured' };
+
+  const match = await bcrypt.compare(pin, data.value);
+  if (!match) return { error: 'Incorrect PIN' };
+
+  // Set httpOnly session cookie (4 hours)
+  cookies().set('nexusblue_portal', generateSecureToken(), {
+    httpOnly: true,
+    sameSite: 'strict',
+    maxAge: 60 * 60 * 4,
+    path: '/nexusblue',
+  });
+
+  redirect('/nexusblue');
+}
+```
+
+### Middleware Addition
+
+```typescript
+// In src/middleware.ts — add after platform_role check for /nexusblue routes
+if (pathname.startsWith('/nexusblue') && pathname !== '/nexusblue/verify') {
+  const portalCookie = request.cookies.get('nexusblue_portal');
+  if (!portalCookie || !isValidPortalToken(portalCookie.value)) {
+    return NextResponse.redirect(new URL('/nexusblue/verify', request.url));
+  }
+}
+```
 
 ---
 
@@ -601,19 +742,23 @@ Write aggregated totals to dev_ai_usage_summary via API.
 
 ## Build Order
 
-When ready to build (after AppVault migrations 031+032 are applied):
+When ready to build (after AppVault migrations 031+032+033 are applied):
 
-1. **Migration 034** (or next available number) — apply `dev_` tables + RLS + seed data to nexusblue-website Supabase
-2. **Middleware update** — add `/nexusblue` route protection (platform_role = nexusblue_admin)
-3. **Layout** — `/nexusblue` route group with sidebar nav (Environment / IP / AI Monitor / Industry / Roadmap / Health)
-4. **Hub page** — dashboard cards (quick wins, visible fast)
-5. **Environment section** — Projects, Tenants, Agent Log, LLM Brief tabs
-6. **IP Registry** — Projects deep dive, Module Library, Docs viewer
-7. **Health section** — Builds, Droplet, Agent schedule
-8. **AI Monitor** — Usage charts, Adherence checklist
-9. **Roadmap** — Suggestions feed, Backlog table
-10. **Industry** — Performance benchmarks, Methodology comparison
-11. **Agents** — Roadmap agent, Performance agent, Sync agent
+1. **Migration 034** — apply `dev_` tables + `dev_portal_config` + RLS + seed data to nexusblue-website Supabase
+2. **Seed bill@nexusblue.io** — run updated nexusblue-website seed script; set `platform_role = 'nexusblue_admin'`; set initial PIN hash in `dev_portal_config`
+3. **Middleware update** — add `/nexusblue` platform_role gate AND portal cookie check; add `/nexusblue/verify` as the PIN entry bypass
+4. **PIN verification flow** — `/nexusblue/verify` page + `verifyPortalPin` server action + `bcryptjs` install
+5. **Nav entry point** — add "NexusBlue Command" menu item to nexusblue-website nav, visible only to `platform_role = 'nexusblue_admin'`
+6. **Layout** — `/nexusblue` route group with sidebar nav (Environment / IP / AI Monitor / Industry / Roadmap / Health)
+7. **Hub page** — dashboard cards (quick wins, visible fast)
+8. **Environment section** — Projects, Tenants, Agent Log, LLM Brief tabs
+9. **IP Registry** — Projects deep dive, Module Library, Docs viewer
+10. **Health section** — Builds, Droplet, Agent schedule
+11. **AI Monitor** — Usage charts, Adherence checklist
+12. **Roadmap** — Suggestions feed, Backlog table
+13. **Industry** — Performance benchmarks, Methodology comparison
+14. **Agents** — Roadmap agent, Performance agent, Sync agent
+15. **Settings** — `/nexusblue/settings` with "Change Portal PIN" (enter current → set new → re-hash + update `dev_portal_config`)
 
 Each section is independently useful. Ship in order — don't wait for all 11 to be done.
 
@@ -623,9 +768,14 @@ Each section is independently useful. Ship in order — don't wait for all 11 to
 
 | File | Change |
 |------|--------|
-| `src/middleware.ts` | Add `/nexusblue` platform_role gate |
+| `src/middleware.ts` | Add `/nexusblue` platform_role gate + portal cookie check |
+| `src/app/(nexusblue)/nexusblue/verify/page.tsx` | PIN entry page (minimal UI) |
 | `src/app/(nexusblue)/` | New route group (separate from `(dashboard)`) |
-| `src/components/nexusblue/` | Super-admin UI components |
+| `src/lib/nexusblue/actions.ts` | `verifyPortalPin()`, `changePortalPin()` server actions |
 | `src/lib/nexusblue/` | Data access for dev_ tables |
-| `supabase/migrations/034_superadmin_portal.sql` | The schema above (confirm number) |
+| `src/components/nexusblue/` | Super-admin UI components |
+| `src/components/layout/nav.tsx` | Add "NexusBlue Command" link (platform_role gate) |
+| `supabase/migrations/034_superadmin_portal.sql` | dev_ tables + dev_portal_config + RLS (confirm number) |
+| `scripts/seed-accounts.sh` | Add bill@nexusblue.io; set platform_role + initial PIN hash |
+| `package.json` | Add `bcryptjs` + `@types/bcryptjs` |
 | `HANDOFF.md` | Update with portal scope and build plan |
