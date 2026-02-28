@@ -1,0 +1,136 @@
+# GitHub Actions CI/CD Template — NexusBlue v5.0
+#
+# USAGE: Copy to .github/workflows/ci.yml in each project.
+# Replace the three ENV values below. Set VERCEL_TOKEN + VERCEL_TEAM_ID as repo secrets.
+#
+# GitHub → [repo] → Settings → Secrets and variables → Actions:
+#   VERCEL_TOKEN     = same token as in .env.local
+#   VERCEL_TEAM_ID   = team_hWt6xTS7kGfR781smAzdmvzV  (constant for all projects)
+#
+# Get REPO_ID:
+#   VERCEL_TOKEN=$(grep '^VERCEL_TOKEN=' .env.local | cut -d= -f2-)
+#   curl -s "https://api.vercel.com/v9/projects/YOUR-PROJECT?teamId=team_hWt6xTS7kGfR781smAzdmvzV" \
+#     -H "Authorization: Bearer $VERCEL_TOKEN" | \
+#     python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('link',{}).get('repoId'))"
+
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+env:
+  PROJECT_NAME: REPLACE_PROJECT_NAME    # e.g., pw-app
+  REPO_NAME: REPLACE_REPO_NAME          # e.g., pw-app  (GitHub repo name)
+  REPO_ID: REPLACE_REPO_ID              # numeric GitHub repo ID (see above)
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Job 1: Lint + Typecheck + Test
+  # Must pass before any deploy job runs.
+  # ─────────────────────────────────────────────
+  quality:
+    name: Lint · Typecheck · Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+        env:
+          # Mock values — tests use vi.mock() for Supabase, never hit a real DB
+          NEXT_PUBLIC_SUPABASE_URL: https://mock.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: mock_anon_key
+          SUPABASE_SERVICE_ROLE_KEY: mock_service_key
+          ANTHROPIC_API_KEY: mock_key
+          # Add any other NEXT_PUBLIC_ vars your build requires:
+          # NEXT_PUBLIC_SITE_URL: https://example.com
+
+  # ─────────────────────────────────────────────
+  # Job 2: Deploy to Vercel Preview
+  # Runs on push to dev branch only, after quality passes.
+  # Deploys to [project].nexusblue.ai
+  # ─────────────────────────────────────────────
+  deploy-preview:
+    name: Deploy → Preview
+    needs: quality
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Vercel preview deploy
+        run: |
+          RESPONSE=$(curl -s -X POST \
+            "https://api.vercel.com/v13/deployments?teamId=${{ secrets.VERCEL_TEAM_ID }}" \
+            -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"name\": \"$PROJECT_NAME\",
+              \"gitSource\": {
+                \"type\": \"github\",
+                \"org\": \"NexusBlueDev\",
+                \"repo\": \"$REPO_NAME\",
+                \"repoId\": $REPO_ID,
+                \"ref\": \"dev\"
+              }
+            }")
+          DEPLOY_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id','ERROR'))")
+          echo "Vercel preview deploy triggered: $DEPLOY_ID"
+          if [ "$DEPLOY_ID" = "ERROR" ]; then
+            echo "Deploy failed to start. Response:"
+            echo "$RESPONSE"
+            exit 1
+          fi
+
+  # ─────────────────────────────────────────────
+  # Job 3: Deploy to Vercel Production
+  # Runs on push to main branch only, after quality passes.
+  # ─────────────────────────────────────────────
+  deploy-production:
+    name: Deploy → Production
+    needs: quality
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Vercel production deploy
+        run: |
+          RESPONSE=$(curl -s -X POST \
+            "https://api.vercel.com/v13/deployments?teamId=${{ secrets.VERCEL_TEAM_ID }}" \
+            -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"name\": \"$PROJECT_NAME\",
+              \"target\": \"production\",
+              \"gitSource\": {
+                \"type\": \"github\",
+                \"org\": \"NexusBlueDev\",
+                \"repo\": \"$REPO_NAME\",
+                \"repoId\": $REPO_ID,
+                \"ref\": \"main\"
+              }
+            }")
+          DEPLOY_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id','ERROR'))")
+          echo "Vercel production deploy triggered: $DEPLOY_ID"
+          if [ "$DEPLOY_ID" = "ERROR" ]; then
+            echo "Deploy failed to start. Response:"
+            echo "$RESPONSE"
+            exit 1
+          fi

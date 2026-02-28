@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 5.0**
+**Version: 5.1**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -1512,6 +1512,102 @@ Return: PASS, or BLOCKING ISSUES with what's missing.
 
 ---
 
+## Testing & CI Standards
+
+### Required for All JS/TS Projects
+
+| Requirement | Detail |
+|-------------|--------|
+| **Vitest** | Unit + integration tests. `npm install -D vitest @vitejs/plugin-react` |
+| **GitHub Actions** | CI on every push. Template: `nexusblue-application-templates/docs/github-ci-template.yml` |
+| **`npm test` script** | Must exist in `package.json`. Runs vitest. |
+| **`engines.node`** | `">=22.0.0"` in `package.json` — enforces correct runtime in CI |
+| **GitHub repo secrets** | `VERCEL_TOKEN` + `VERCEL_TEAM_ID` set per repo (not in .env files) |
+
+### What to Test
+
+| Test category | Priority |
+|---------------|----------|
+| Auth flows — login, role redirect, unauthorized → 401/403 | **Must have** |
+| API route auth — unauthenticated and wrong-role cases per route | **Must have** |
+| Input validation — size caps, required fields, enum values | **Must have** |
+| Core business logic — status transitions, billing metering | **Must have** |
+| Stripe webhook signature validation | **Must have** (if Stripe used) |
+| AI route error handling — fallback, retry, size limits | **Must have** (if AI used) |
+| Supabase internals | **Never** — mock the client, test the logic around it |
+| Third-party SDK internals | **Never** — mock them |
+| UI appearance / static rendering | **Never** |
+
+**Target:** 10–20 meaningful path tests per project, not 80% line coverage.
+
+### Standard Test Directory Layout
+
+```
+src/__tests__/
+├── setup.ts              ← Global mocks (Supabase clients, Next.js nav, cookies)
+├── auth/
+│   └── auth-flow.test.ts ← signIn, role redirect, archived/unauthorized
+└── api/
+    └── [feature].test.ts ← One file per API route group
+```
+
+### Standard Mock Setup (`src/__tests__/setup.ts`)
+
+```typescript
+import { vi } from 'vitest';
+
+vi.mock('@/lib/supabase/server', () => ({
+  createServerSupabase: vi.fn(),
+  createServiceClient: vi.fn(),
+}));
+
+vi.mock('next/navigation', () => ({
+  redirect: vi.fn(),
+  useRouter: vi.fn(() => ({ push: vi.fn() })),
+}));
+
+vi.mock('next/headers', () => ({
+  cookies: vi.fn(() => ({ get: vi.fn(), set: vi.fn() })),
+}));
+```
+
+### Vitest Config (`vitest.config.ts`)
+
+```typescript
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: 'node',
+    globals: true,
+    setupFiles: ['./src/__tests__/setup.ts'],
+    include: ['src/__tests__/**/*.test.ts'],
+  },
+  resolve: { alias: { '@': path.resolve(__dirname, './src') } },
+});
+```
+
+### CI Flow
+
+```
+Push to dev  → GHA: lint + typecheck + test → PASS → auto-deploy to preview
+Push to main → GHA: lint + typecheck + test → PASS → auto-deploy to production
+PR           → GHA: lint + typecheck + test → PASS required to merge
+```
+
+`scripts/deploy.sh` remains for emergency manual overrides from the Droplet.
+
+### Exceptions
+
+- **Static PWAs** (HTML5/ES5, GitHub Pages): No tests needed — no server logic, no auth
+- **Infrastructure repos**: No tests needed
+- **Python pipelines**: pytest (separate from this standard — future)
+
+---
+
 ## Continuous Improvement Loop
 
 This is a **living document**. As we work across projects, we learn. Those learnings should improve all future work.
@@ -1546,6 +1642,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v4.8 — Added Test Account Seeding Standard. Two account types: NexusBlue dev accounts (`test-[role]@[project-slug].dev` / `NxB_dev_2026!`, `must_reset_pw: false`) for internal testing, and client initial accounts (project-specific, `must_reset_pw: true`) for client onboarding. Standard `scripts/seed-accounts.sh` template using Supabase Admin API with 5-second abort window. Credentials documented in HANDOFF.md `## Test Accounts` block. Root cause: pw-app used inconsistent passwords across sessions; credential documentation was buried in HANDOFF.md prose.
 - v4.7 — Droplet upgraded to 8 vCPU / 16 GB RAM. Node.js 22 LTS set as required runtime for all projects (`"engines": { "node": ">=22.0.0" }` in package.json). Added Droplet Health & Maintenance section: session start health check with alert thresholds (RAM, swap, disk, load), proactive maintenance rules (orphan processes, npm ci, dev server cleanup, cache pruning), unattended security upgrades, swap safety net, Node version enforcement. Root cause: Droplet was running 2 vCPU / 4 GB RAM with 75% swap usage and load average of 20 — silently degrading all development work
 - v4.9 — Added Module Standard as a non-negotiable global rule. Canonical standard at `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md` v1.1. Key additions: AI-first requirements (streaming default, Sonnet/Haiku/Code rule, prompt caching mandate), Monetization requirements (billing unit before migration, `{prefix}_usage` table in every module, three commercial modes: Embedded/Managed Product/Standalone App), Role Capability Matrix (module_permissions + module_defaults tables, org admin controls within NexusBlue-set ceiling). MODULE_STANDARD.md updated to v1.1 with these three sections. Reference implementations: WebMap + AppVault (nexusblue-website). Origin: AppVault architecture session 2026-02-28
+- v5.1 — Added Testing & CI Standards as a global requirement for all JS/TS projects. Stack: Vitest (unit/integration) + GitHub Actions (CI gates + auto-deploy). CI workflow auto-deploys to Vercel preview on dev push and production on main push — replaces manual `./scripts/deploy.sh` calls as primary deploy path (script remains for emergency overrides). Tests mock Supabase clients and focus on critical paths: auth flows, API route auth enforcement, input validation, core business logic. Target: 10–20 meaningful path tests per project. Template: `docs/github-ci-template.yml`. Implemented on nexusblue-website, pw-app, mcpc-website (Tier 1). Root cause: zero test files and zero CI automation across all 11 projects — identified as the largest gap between NexusBlue's current ranking (~Top 15-20%) and Top 1-3% target
 - v5.0 — Added three architectural standards: (1) **Platform Architecture Standard** — defines Website/Standalone vs Platform Product project types; Platform Products get `organizations` table, `platform_role` column on profiles (`nexusblue_admin`), three-tier RLS pattern (service_role / nexusblue_admin / org-member), NexusBlue super-admin seed account, canonical RLS policy templates; (2) **Design System Standard** — canonical CSS token names and component class names enforced across all projects, font convention (Poppins/Oswald), shared library extraction threshold (3+ shared implementations triggers `@nexusblue/ui`); (3) **Agent Orchestration Standard** — three lifecycle gate agents (architect, security, qa) with structured invocation prompts, promotion rules, and HANDOFF.md documentation requirements; future agent roadmap (scale, migration, accessibility, i18n). Origin: mcpc-website session 2026-02-28
 
 ---

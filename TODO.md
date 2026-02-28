@@ -67,6 +67,22 @@
 
 ---
 
+## Testing & CI Implementation (Tier 1 — in progress)
+
+- [ ] **[Dev]** Add GitHub Actions CI + Vitest to **nexusblue-website** (repoId: 1163618386)
+- [ ] **[Dev]** Set GitHub repo secrets on nexusblue-website: `VERCEL_TOKEN` + `VERCEL_TEAM_ID`
+- [ ] **[Dev]** Add GitHub Actions CI + Vitest to **pw-app** (repoId: 1168058088)
+- [ ] **[Dev]** Set GitHub repo secrets on pw-app: `VERCEL_TOKEN` + `VERCEL_TEAM_ID`
+- [ ] **[Dev]** Add GitHub Actions CI + Vitest + Playwright to **mcpc-website** (repoId: 1168606931)
+- [ ] **[Dev]** Set GitHub repo secrets on mcpc-website: `VERCEL_TOKEN` + `VERCEL_TEAM_ID`
+
+## Testing & CI Implementation (Tier 2 — next session)
+
+- [ ] **[Dev]** Add GitHub Actions CI + Vitest to **cnc-platform**
+- [ ] **[Dev]** Add GitHub Actions CI + Vitest to **cain-website-022026**
+- [ ] **[Dev]** Add GitHub Actions CI + Vitest to **pet_scheduler**
+- [ ] **[Dev]** Add GitHub Actions CI + Vitest to **sectorius-website**
+
 ## Completed
 
 - [x] **[Dev]** Add `## Project Type` section to all 11 project CLAUDE.md files — done 2026-02-28

@@ -59,7 +59,7 @@ The super-admin portal has cross-project read access, tenant data, agent logs, a
 | Session | On successful PIN entry → server sets `nexusblue_portal` session cookie (4-hour expiry, httpOnly, sameSite=strict) |
 | Middleware | All `/nexusblue` routes check: (a) `platform_role = 'nexusblue_admin'` AND (b) valid `nexusblue_portal` cookie |
 | Change | From `/nexusblue/settings` → "Change Portal PIN" — enter current PIN, set new PIN |
-| Seed | Initial PIN set as bcrypt hash in migration 034 seed data — PIN value set in seed script only, never in plan docs or CLAUDE.md |
+| Seed | Initial PIN set as bcrypt hash in migration 035 seed data — PIN value set in seed script only, never in plan docs or CLAUDE.md |
 
 ### PIN Entry Flow (`/nexusblue/verify`)
 
@@ -75,7 +75,7 @@ User clicks "NexusBlue Command" in nav
             └─ Cancel → back to main portal (no access)
 ```
 
-### Database Addition (Migration 034)
+### Database Addition (Migration 035)
 
 Add to the migration schema alongside the `dev_` tables:
 
@@ -507,16 +507,16 @@ Orchestration agent schedule and status:
 
 ---
 
-## Database Schema (Migration 034)
+## Database Schema (Migration 035)
 
-> **Note:** Migration 033 is already in use by another feature on nexusblue-website.
-> This schema goes in as **034** — confirm the exact number when applying.
+> **Note:** Migrations 033 and 034 are both in use on nexusblue-website (033 = another feature, 034 = appvault_consulting).
+> This schema goes in as **035** — confirmed 2026-02-28.
 
 All tables prefixed `dev_` to distinguish from product feature tables.
 
 ```sql
 -- ============================================================
--- Migration 034: NexusBlue Super-Admin Portal
+-- Migration 035: NexusBlue Super-Admin Portal
 -- ============================================================
 
 -- Project Registry
@@ -744,7 +744,7 @@ Write aggregated totals to dev_ai_usage_summary via API.
 
 When ready to build (after AppVault migrations 031+032+033 are applied):
 
-1. **Migration 034** — apply `dev_` tables + `dev_portal_config` + RLS + seed data to nexusblue-website Supabase
+1. **Migration 035** — apply `dev_` tables + `dev_portal_config` + RLS + seed data to nexusblue-website Supabase (034 is taken by 034_appvault_consulting.sql — confirmed 2026-02-28)
 2. **Seed bill@nexusblue.io** — run updated nexusblue-website seed script; set `platform_role = 'nexusblue_admin'`; set initial PIN hash in `dev_portal_config`
 3. **Middleware update** — add `/nexusblue` platform_role gate AND portal cookie check; add `/nexusblue/verify` as the PIN entry bypass
 4. **PIN verification flow** — `/nexusblue/verify` page + `verifyPortalPin` server action + `bcryptjs` install
@@ -775,7 +775,7 @@ Each section is independently useful. Ship in order — don't wait for all 11 to
 | `src/lib/nexusblue/` | Data access for dev_ tables |
 | `src/components/nexusblue/` | Super-admin UI components |
 | `src/components/layout/nav.tsx` | Add "NexusBlue Command" link (platform_role gate) |
-| `supabase/migrations/034_superadmin_portal.sql` | dev_ tables + dev_portal_config + RLS (confirm number) |
+| `supabase/migrations/035_superadmin_portal.sql` | dev_ tables + dev_portal_config + RLS (034 taken by appvault_consulting) |
 | `scripts/seed-accounts.sh` | Add bill@nexusblue.io; set platform_role + initial PIN hash |
 | `package.json` | Add `bcryptjs` + `@types/bcryptjs` |
 | `HANDOFF.md` | Update with portal scope and build plan |
