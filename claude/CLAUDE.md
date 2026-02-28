@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 4.9**
+**Version: 5.0**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -1231,6 +1231,287 @@ Run `./scripts/seed-accounts.sh` to recreate dev accounts if needed.
 
 ---
 
+## Platform Architecture Standard
+
+Every NexusBlue project is one of two types. **Declare the type in the project's `CLAUDE.md` at scaffold time** — it determines the database schema pattern, RLS approach, and auth model for the entire project.
+
+### Project Types
+
+| Type | Current Examples | Characteristics |
+|------|----------------|----------------|
+| **Website / Standalone** | mcpc-website, cain-website, pw-app | Single tenant. No `organization_id`. No `organizations` table. Auth is project-scoped. |
+| **Platform Product** | nexusblue-website, pet_scheduler | Multi-tenant. Shared DB. `organizations` table. `organization_id` on all tables. `platform_role` on profiles for NexusBlue super-admin cross-tenant access. |
+
+**Rule:** Choose the type at project creation. Retrofitting Standalone → Platform after data exists is painful and expensive. When in doubt: if the project will ever serve more than one organization, it's a Platform Product.
+
+### Platform Product: Required Infrastructure
+
+Every Platform Product ships these tables in its **first migration** before any module is added.
+
+#### `organizations` table
+
+```sql
+CREATE TABLE IF NOT EXISTS public.organizations (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug        TEXT UNIQUE NOT NULL,   -- used in URLs, email domains, seeding; never changes
+  name        TEXT NOT NULL,
+  plan_tier   TEXT NOT NULL DEFAULT 'starter',
+  is_active   BOOLEAN DEFAULT true,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access on organizations"
+  ON public.organizations FOR ALL
+  USING (auth.role() = 'service_role');
+
+CREATE POLICY "NexusBlue admins read all organizations"
+  ON public.organizations FOR SELECT
+  USING (
+    (SELECT platform_role FROM public.profiles WHERE id = auth.uid()) = 'nexusblue_admin'
+  );
+
+CREATE POLICY "Org members read own organization"
+  ON public.organizations FOR SELECT
+  USING (
+    id = (SELECT organization_id FROM public.profiles WHERE id = auth.uid())
+  );
+```
+
+#### `profiles` additions (Platform Products only)
+
+```sql
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS organization_id  UUID REFERENCES public.organizations(id),
+  ADD COLUMN IF NOT EXISTS platform_role    TEXT CHECK (platform_role IN ('nexusblue_admin'));
+```
+
+### Three-Tier Access Pattern (Platform Products)
+
+| Tier | Who | How | Scope |
+|------|-----|-----|-------|
+| **service_role** | Background jobs, cron, admin scripts | Supabase service key | Everything — RLS bypassed |
+| **nexusblue_admin** | NexusBlue staff | `platform_role = 'nexusblue_admin'` on their profile | All orgs, all data (read) |
+| **org member** | Clients, employees of a tenant | `organization_id` on their profile | Own org's data only |
+
+### Standard RLS Policy Template (All Platform Module Tables)
+
+```sql
+-- Service role: full access
+CREATE POLICY "Service role full access on {prefix}_{entity}"
+  ON public.{prefix}_{entity} FOR ALL
+  USING (auth.role() = 'service_role');
+
+-- NexusBlue admins: read across all orgs
+CREATE POLICY "NexusBlue admins read all {prefix}_{entity}"
+  ON public.{prefix}_{entity} FOR SELECT
+  USING (
+    (SELECT platform_role FROM public.profiles WHERE id = auth.uid()) = 'nexusblue_admin'
+  );
+
+-- Org members: own org only
+CREATE POLICY "Org members read own {prefix}_{entity}"
+  ON public.{prefix}_{entity} FOR SELECT
+  USING (
+    (SELECT organization_id FROM public.profiles WHERE id = auth.uid()) = organization_id
+  );
+```
+
+### NexusBlue Super-Admin Account (Platform Products)
+
+Every Platform Product seed script creates a dedicated NexusBlue super-admin account. The `platform_role` cannot be set via the Supabase Auth Admin API — it requires a direct SQL update after creation.
+
+Standard credentials:
+- Email: `nexusblue-admin@nexusblue.dev`
+- Password: `NxB_dev_2026!`
+- Post-creation SQL: `UPDATE public.profiles SET platform_role = 'nexusblue_admin' WHERE id = (SELECT id FROM auth.users WHERE email = 'nexusblue-admin@nexusblue.dev');`
+
+Add this account to `scripts/seed-accounts.sh` after the standard NexusBlue dev accounts, with the SQL step executed via the service role key.
+
+### Platform Architecture Rules
+
+- **Declare type in project `CLAUDE.md`** — every project CLAUDE.md has a `## Project Type` section: `Website / Standalone` or `Platform Product`.
+- **`organization_id` on every table in Platform Products** — no exceptions. All module tables, all RLS policies.
+- **`plan_tier` lives on `organizations`** — modules check `organizations.plan_tier`, never `profiles.plan_tier`.
+- **`platform_role` is the NexusBlue ceiling override** — it bypasses tenant isolation. Never expose it via any client-accessible route or response body.
+- **`organizations.slug` never changes after creation** — it is used in URLs and seed scripts. Treat it as immutable.
+- **`organization_id` is always set at signup** — never left null for active users in Platform Products.
+
+---
+
+## Design System Standard
+
+NexusBlue projects share a design language — consistent token names, component class conventions, and typography — without requiring a shared package until the threshold justifies one.
+
+### Current Model: Per-Project With Shared Conventions
+
+Each project defines its own `globals.css` but follows the **canonical token naming** and **component class names** defined here. This enables visual consistency and allows clean migration to a shared library later.
+
+### Canonical CSS Token Names
+
+Token **names** are fixed across all projects. Token **values** vary per project's brand.
+
+```css
+:root {
+  /* Brand colors — values are project-specific, names are canonical */
+  --brand-blue:       [project value];
+  --brand-blue-dark:  [project value];
+  --brand-blue-light: [project value];
+  --brand-red:        [project value];
+  --brand-red-light:  [project value];
+  --brand-gold:       [project value];
+  --brand-gold-light: [project value];
+  --brand-charcoal:   [project value];
+
+  /* Semantic colors — always aliases of brand colors, never hardcoded hex */
+  --brand-primary:       var(--brand-blue);
+  --brand-primary-hover: var(--brand-blue-dark);
+  --brand-accent:        var(--brand-red);
+  --brand-highlight:     var(--brand-gold);
+
+  /* Surfaces */
+  --surface-primary:   #ffffff;
+  --surface-secondary: #f7f8fa;
+  --surface-blue:      var(--brand-blue-light);
+
+  /* Text */
+  --text-primary:    var(--brand-charcoal);
+  --text-secondary:  #555555;
+  --text-muted:      #888888;
+  --text-on-primary: #ffffff;
+  --text-on-dark:    #ffffff;
+
+  /* Borders */
+  --border-default: #e5e7eb;
+  --border-focus:   var(--brand-blue);
+
+  /* Radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+```
+
+### Canonical Component Class Names
+
+These class names are reserved across all projects. If a project needs the capability, use the canonical name — never rename or create an alias.
+
+| Class | Purpose |
+|-------|---------|
+| `.btn-primary` | Primary action button (`--brand-primary` background) |
+| `.btn-secondary` | Secondary / ghost button |
+| `.btn-accent` | Alert / accent button (`--brand-accent` background) |
+| `.input` | Standard text input (full-width, border, focus ring) |
+| `.page-container` | Full-width → `max-width: 1140px` centered wrapper |
+| `.section-padding` | Consistent vertical section padding (2.5rem / 3.5rem at md) |
+| `.skip-link` | Accessibility skip-to-main-content link |
+| `.card-hover` | `translateY(-4px)` + `--shadow-lg` on hover |
+| `.prose-content` | Styled HTML content for CMS / rich text rendering |
+
+**Rule:** Never define `.button-primary`, `.primaryBtn`, `.container`. If you don't need the component, don't define it. If you do need it, use the canonical name.
+
+### Shared Library Threshold
+
+Extract to `nexusblue-design` repo (npm package `@nexusblue/ui`) when **any of these is true:**
+
+- 3+ projects share the same component **implementation** (not just the class name)
+- A component requires significant JavaScript behavior (modal, combobox, datepicker)
+- A project needs to consume a component from another NexusBlue project
+
+Until then, per-project `globals.css` with canonical token names is the right model. Package infrastructure is not earned until the threshold is hit.
+
+### Font Convention
+
+- **Body text:** Poppins (Google Fonts) — weights 300, 400, 500, 600, 700
+- **Headings:** Oswald (Google Fonts) — weights 400, 500, 600, 700, `text-transform: uppercase`
+- **Monospace / code:** system monospace stack
+
+Load via `next/font/google` with `display: 'swap'`. CSS variables: `--font-poppins`, `--font-oswald`, mapped via `@theme inline` in Tailwind v4.
+
+**Font override (client brand):** A client project may specify different brand fonts in its `CLAUDE.md`. Use the same CSS variable names — point `--font-poppins` → client body font, `--font-oswald` → client heading font. All components work without modification.
+
+---
+
+## Agent Orchestration Standard
+
+Orchestration agents are specialized subagents invoked at critical lifecycle gates. They protect architectural quality, catch security issues before production, and act as a second opinion when a single session can miss cross-cutting concerns.
+
+### The Three Orchestration Agents
+
+| Agent | Gate | What It Blocks |
+|-------|------|---------------|
+| **architect** | Module PLANNING → BUILDING | Code cannot be written until schema and architecture are verified |
+| **security** | New API routes → merge to `main` | Routes cannot ship until auth / RLS / validation is confirmed clean |
+| **qa** | Module ADMIN → LIVE (MVP) | Client-facing feature cannot go live until completeness is verified |
+
+### Invocation Patterns
+
+Invoke via `Agent tool` with `subagent_type: general-purpose`. Standard prompt per agent type:
+
+**Architect review** (before writing any module code):
+```
+Review the module planning docs for [module-name] in [project-path].
+Check:
+1. Every table has organization_id (Platform Products only — skip for Standalone/Website)
+2. RLS policies cover all 3 tiers: service_role, nexusblue_admin, org-member
+3. {prefix}_usage table present for billing metering
+4. module_defaults seed rows included in migration
+5. No N+1 query risks in data access patterns
+6. Migration is additive-only (no DROP, no destructive ALTER)
+Return: PASS, or ISSUES FOUND with file:line references.
+```
+
+**Security review** (before any new API route merges to main):
+```
+Audit the API routes in [file list] for [module-name].
+Check:
+1. Auth verified before any data access
+2. Input validated with Zod before use — no raw request.json() passed to business logic
+3. No secrets, internal IDs, or service-role data in response bodies
+4. RLS not bypassed without service_role key
+5. No SQL string concatenation — parameterized queries only
+Return: PASS, or ISSUES FOUND with specific vulnerabilities.
+```
+
+**QA review** (before module moves to LIVE):
+```
+Review [module-name] in [project-path] for LIVE readiness.
+Check:
+1. MODULE_STANDARD.md portability checklist complete
+2. Required docs exist and are current: README, ARCHITECTURE, SCHEMA, AGENTS (if AI module)
+3. Feature gates registered in migration (not hardcoded in UI)
+4. Role capability matrix in README matches enforcement in API routes
+5. {prefix}_usage incremented on all billable actions
+Return: PASS, or BLOCKING ISSUES with what's missing.
+```
+
+### Invocation Rules
+
+- **Architect review blocks BUILDING.** No module code is written until architect review passes. Scaffolding and type files (`src/types/{module}.ts`) are exempt.
+- **Security review blocks merging to `main`.** New API routes do not ship without a security review pass. Admin-only internal routes may be waived with explicit HANDOFF.md notation.
+- **QA review is required before client-facing features ship.** Internal-only MVP phases may proceed without QA review — it becomes mandatory when clients can access the feature.
+- **Document every review in HANDOFF.md.** Format: `Architect review: PASS (2026-02-28)`. Waivers: `Security review: WAIVED — admin-only route, no external surface (2026-02-28)`.
+- **A PASS is a snapshot.** Reviews reflect code state at invocation time. Significant changes after a PASS may require re-review at your judgment.
+
+### Future Agents (Planned)
+
+| Agent | Purpose |
+|-------|---------|
+| **scale** | DB query analysis, index coverage, pagination patterns at high-volume scenarios |
+| **migration** | Validates DB migrations are safe on production with live data before execution |
+| **accessibility** | Audits UI for WCAG 2.1 AA compliance |
+| **i18n** | Reviews copy and layout for internationalization readiness |
+
+---
+
 ## Continuous Improvement Loop
 
 This is a **living document**. As we work across projects, we learn. Those learnings should improve all future work.
@@ -1265,6 +1546,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v4.8 — Added Test Account Seeding Standard. Two account types: NexusBlue dev accounts (`test-[role]@[project-slug].dev` / `NxB_dev_2026!`, `must_reset_pw: false`) for internal testing, and client initial accounts (project-specific, `must_reset_pw: true`) for client onboarding. Standard `scripts/seed-accounts.sh` template using Supabase Admin API with 5-second abort window. Credentials documented in HANDOFF.md `## Test Accounts` block. Root cause: pw-app used inconsistent passwords across sessions; credential documentation was buried in HANDOFF.md prose.
 - v4.7 — Droplet upgraded to 8 vCPU / 16 GB RAM. Node.js 22 LTS set as required runtime for all projects (`"engines": { "node": ">=22.0.0" }` in package.json). Added Droplet Health & Maintenance section: session start health check with alert thresholds (RAM, swap, disk, load), proactive maintenance rules (orphan processes, npm ci, dev server cleanup, cache pruning), unattended security upgrades, swap safety net, Node version enforcement. Root cause: Droplet was running 2 vCPU / 4 GB RAM with 75% swap usage and load average of 20 — silently degrading all development work
 - v4.9 — Added Module Standard as a non-negotiable global rule. Canonical standard at `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md` v1.1. Key additions: AI-first requirements (streaming default, Sonnet/Haiku/Code rule, prompt caching mandate), Monetization requirements (billing unit before migration, `{prefix}_usage` table in every module, three commercial modes: Embedded/Managed Product/Standalone App), Role Capability Matrix (module_permissions + module_defaults tables, org admin controls within NexusBlue-set ceiling). MODULE_STANDARD.md updated to v1.1 with these three sections. Reference implementations: WebMap + AppVault (nexusblue-website). Origin: AppVault architecture session 2026-02-28
+- v5.0 — Added three architectural standards: (1) **Platform Architecture Standard** — defines Website/Standalone vs Platform Product project types; Platform Products get `organizations` table, `platform_role` column on profiles (`nexusblue_admin`), three-tier RLS pattern (service_role / nexusblue_admin / org-member), NexusBlue super-admin seed account, canonical RLS policy templates; (2) **Design System Standard** — canonical CSS token names and component class names enforced across all projects, font convention (Poppins/Oswald), shared library extraction threshold (3+ shared implementations triggers `@nexusblue/ui`); (3) **Agent Orchestration Standard** — three lifecycle gate agents (architect, security, qa) with structured invocation prompts, promotion rules, and HANDOFF.md documentation requirements; future agent roadmap (scale, migration, accessibility, i18n). Origin: mcpc-website session 2026-02-28
 
 ---
 

@@ -1,10 +1,11 @@
 # NexusBlue Module Standard
 
-> **Version:** 1.1
+> **Version:** 1.2
 > **Applies to:** All feature modules in all NexusBlue Next.js + Supabase projects
 > **Canonical location:** `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md`
 > **Install to project:** `{project}/docs/modules/MODULE_STANDARD.md` (copy or symlink)
 > **Reference implementations:** WebMap (nexusblue-website), AppVault (nexusblue-website)
+> **Project type note:** `organization_id` on module tables, the three-tier RLS policy template, and `{prefix}_usage.organization_id` are **Platform Product requirements only**. Website / Standalone projects omit these. See the Platform Architecture Standard in global `CLAUDE.md`.
 
 ---
 
@@ -546,3 +547,4 @@ A module is portable (can be lifted into another project) when:
 |---------|------|---------|
 | 1.0 | 2026-02-28 | Initial standard — derived from WebMap + AppVault patterns |
 | 1.1 | 2026-02-28 | Added AI-first requirements, Monetization requirements (billing unit, usage table, admin tier control), Role Capability Matrix (module_permissions + module_defaults tables). Updated Required Files Checklist and Portability Checklist. |
+| 1.2 | 2026-02-28 | Clarified project type scope: `organization_id`, three-tier RLS template, and `{prefix}_usage.organization_id` are Platform Product requirements only — not applicable to Website / Standalone projects. Added reference to Platform Architecture Standard in global CLAUDE.md. |
