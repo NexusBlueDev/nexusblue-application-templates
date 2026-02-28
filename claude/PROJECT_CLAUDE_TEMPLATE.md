@@ -4,8 +4,26 @@
 <!-- Global standards (security, workflow, Windows/OneDrive, commit discipline, session protocols) -->
 <!-- are defined in the global template and inherited automatically. -->
 
-**Global template version:** v3.0
+**Global template version:** v5.0
 **Based on:** `application-templates/claude/CLAUDE.md`
+
+---
+
+## Project Type
+
+**Type:** [Platform Product | Website / Standalone | Static PWA | Infrastructure | Script / Pipeline]
+
+<!-- Platform Product: uncomment and fill in -->
+<!-- White-label [describe] SaaS. NexusBlue owns the platform. `organizations` table required. -->
+<!-- `organization_id` on all data tables. Three-tier RLS (service_role → nexusblue_admin → org member). -->
+<!-- [Client Name] is org #1. No self-signup — admin creates all accounts. -->
+
+<!-- Website / Standalone: uncomment and fill in -->
+<!-- Single-tenant [describe] for [Client Name]. Standard Supabase RLS (user → own data). -->
+<!-- No `organizations` table. No `organization_id` on data tables. -->
+
+<!-- Static PWA: uncomment and fill in -->
+<!-- Client-side only. No auth, no database, no backend. Hosted on GitHub Pages. -->
 
 ---
 
@@ -13,7 +31,7 @@
 
 ```
 What:    [One-sentence description of what this project is]
-Mode:    [Type — e.g., "Next.js SaaS", "HTML5 PWA", "Python data pipeline", "Static site"]
+Client:  [Client / Owner name]
 Repo:    https://github.com/NexusBlueDev/[REPO-NAME]
 Live:    [URL or "not deployed"]
 Stack:   [Key technologies — only what differs from or adds to the global stack]
@@ -24,10 +42,9 @@ Stack:   [Key technologies — only what differs from or adds to the global stac
 ## Workflow Rules
 
 <!-- Only include rules that OVERRIDE or ADD TO the global workflow. -->
-<!-- Example: "Always commit and push before any task is complete" is already global — don't repeat it. -->
+<!-- "Always commit before any task is complete" is already global — don't repeat it. -->
 
 - [Any project-specific workflow rule]
-- [e.g., "When bumping versions: update ?v=N on ALL script/link tags AND bump CACHE_NAME in sw.js"]
 - [e.g., "Run npm run build before every push"]
 
 ---
@@ -43,8 +60,6 @@ Stack:   [Key technologies — only what differs from or adds to the global stac
 
 **Conventions:**
 - [Project-specific naming or structural convention]
-- [e.g., "Global namespace: JJ (window.JJ) — all modules attach to this"]
-- [e.g., "All DOM manipulation through JJ.ui — never direct DOM in app.js"]
 
 ---
 
@@ -53,13 +68,27 @@ Stack:   [Key technologies — only what differs from or adds to the global stac
 <!-- Only include what's specific to this project, beyond the global stack. -->
 
 ```
-[Language/Framework]:  [version]
-[Database]:            [version or provider]
-[Hosting]:             [where deployed]
-[Cache name]:          [if applicable]
-[Storage key]:         [if applicable]
-[Current version]:     vN
+Framework:     Next.js 15 + TypeScript
+Styling:       Tailwind v4
+Database/Auth: Supabase
+Hosting:       Vercel
+Node:          >=22.0.0
 ```
+
+---
+
+## Seed Accounts
+
+<!-- Platform Product format: -->
+<!-- NexusBlue super-admin: nexusblue-admin@nexusblue.dev / NxB_dev_2026! -->
+<!-- Dev org accounts:      test-[role]@[slug].dev / NxB_dev_2026! -->
+<!-- Client initial:        [email] / TempPass1! (must_reset_pw=true — uncomment when onboarding) -->
+
+<!-- Website / Standalone format: -->
+<!-- Dev accounts:    test-[role]@[slug].dev / NxB_dev_2026! -->
+<!-- Client initial:  [email] / TempPass1! (must_reset_pw=true — uncomment when onboarding) -->
+
+Run `./scripts/seed-accounts.sh` to create all dev accounts.
 
 ---
 
@@ -75,7 +104,7 @@ Stack:   [Key technologies — only what differs from or adds to the global stac
 ## Notes for Future Sessions
 
 <!-- Important context that doesn't fit elsewhere. -->
-<!-- These should eventually migrate to HANDOFF.md if they're project-state related. -->
-<!-- Or to the global template if they apply to all projects. -->
+<!-- Migrate to HANDOFF.md if project-state related. -->
+<!-- Migrate to global template if applicable to all projects. -->
 
 - [Note]

@@ -4,7 +4,7 @@
 > enough context about NexusBlue's development environment, architecture, and standards
 > to contribute useful planning, design, and technical guidance.
 >
-> **Last updated:** 2026-02-28
+> **Last updated:** 2026-02-28 (rev 2 — added super-admin portal, module standard, template docs)
 > **Maintained by:** NexusBlue Dev (nexusblue.ai)
 
 ---
@@ -202,6 +202,53 @@ v4's `@layer` system requires care (see below), but CSS variables allow per-proj
 
 **Critical Tailwind v4 gotcha:**
 Any CSS reset (`*, *::before, *::after { margin: 0; padding: 0 }`) outside `@layer base {}` silently overrides all Tailwind utilities in production webpack builds. All element-selector overrides must be inside `@layer base {}`.
+
+---
+
+## NexusBlue Super-Admin Portal (`/nexusblue`)
+
+The **nexusblue-website** project includes a platform-level super-admin command center accessible only to users with `platform_role = 'nexusblue_admin'`. This is the "Tony Stark / JARVIS" interface — NexusBlue leadership manages the entire platform from here.
+
+**Route:** `/nexusblue` (separate from the regular `/admin` route)
+**Access control:** `platform_role = 'nexusblue_admin'` in `profiles` table — NOT regular `admin` role
+
+**Seven sections planned:**
+
+| Section | Purpose |
+|---------|---------|
+| **Hub** | Dashboard — project health, recent activity, agent run log |
+| **Environment** | Live status of all projects (git state, last deploy, Vercel status, Droplet metrics) |
+| **IP Registry** | All NexusBlue modules — what they are, status, architecture docs, reuse potential |
+| **AI Monitor** | AI usage across all projects — tokens, cost, model distribution, trend vs. industry |
+| **Industry Benchmark** | AI-first scoring — how our implementations compare to best practices; improvement suggestions |
+| **Roadmap** | Active roadmap tracker — priorities, status, next actions |
+| **Platform Health** | Cross-project performance, error rates, deployment success rate |
+
+**Agents powering this portal:**
+- **Architect agent** — Planning → Building phase transitions; migration conflict detection
+- **Security agent** — Routes → Main safety review; auth and RLS audit
+- **QA agent** — Admin → Live certification; pre-deploy checks
+- **Roadmap agent** — Post-cycle retrospective; priority recommendations
+- **Performance agent** — Weekly cross-project performance benchmarks
+
+**Database:** Eight `dev_` prefixed tables (migration 034+) in nexusblue-website Supabase project.
+**Status:** Planned — builds after AppVault migrations 031+032+033 are applied.
+
+Full spec: `docs/NEXUSBLUE_SUPERADMIN_PLAN.md`
+
+---
+
+## Template Documents Available
+
+For consistent project setup, these prompt templates live in `nexusblue-application-templates/docs/`:
+
+| Document | Purpose |
+|----------|---------|
+| `NEW_PROJECT_PROMPT.md` | Copy-paste Claude Code prompt for starting any new NexusBlue project |
+| `NEW_MODULE_PROMPT.md` | Copy-paste Claude Code prompt for adding a module to an existing Platform Product |
+| `MODULE_STANDARD.md` | Full v1.2 module standard — directory contract, naming, DB conventions, AI rules, monetization |
+| `NEXUSBLUE_SUPERADMIN_PLAN.md` | Full spec for the `/nexusblue` platform command center |
+| `EXTERNAL_LLM_BRIEF.md` | This document — share with any external AI to give NexusBlue context |
 
 ---
 
