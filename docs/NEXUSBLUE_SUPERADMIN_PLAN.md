@@ -5,7 +5,7 @@
 > **Purpose:** Single command center where NexusBlue super-admin manages the entire
 > development environment, IP catalog, AI methodology, and platform performance.
 >
-> **Status:** Planning complete — pending AppVault migrations 031+032 before building
+> **Status:** Planning complete — pending AppVault migrations 031+032+033 before building
 > **Version:** 1.0 — 2026-02-28
 
 ---
@@ -366,13 +366,16 @@ Orchestration agent schedule and status:
 
 ---
 
-## Database Schema (Migration 033)
+## Database Schema (Migration 034)
+
+> **Note:** Migration 033 is already in use by another feature on nexusblue-website.
+> This schema goes in as **034** — confirm the exact number when applying.
 
 All tables prefixed `dev_` to distinguish from product feature tables.
 
 ```sql
 -- ============================================================
--- Migration 033: NexusBlue Super-Admin Portal
+-- Migration 034: NexusBlue Super-Admin Portal
 -- ============================================================
 
 -- Project Registry
@@ -600,7 +603,7 @@ Write aggregated totals to dev_ai_usage_summary via API.
 
 When ready to build (after AppVault migrations 031+032 are applied):
 
-1. **Migration 033** — apply `dev_` tables + RLS + seed data to nexusblue-website Supabase
+1. **Migration 034** (or next available number) — apply `dev_` tables + RLS + seed data to nexusblue-website Supabase
 2. **Middleware update** — add `/nexusblue` route protection (platform_role = nexusblue_admin)
 3. **Layout** — `/nexusblue` route group with sidebar nav (Environment / IP / AI Monitor / Industry / Roadmap / Health)
 4. **Hub page** — dashboard cards (quick wins, visible fast)
@@ -624,5 +627,5 @@ Each section is independently useful. Ship in order — don't wait for all 11 to
 | `src/app/(nexusblue)/` | New route group (separate from `(dashboard)`) |
 | `src/components/nexusblue/` | Super-admin UI components |
 | `src/lib/nexusblue/` | Data access for dev_ tables |
-| `supabase/migrations/033_superadmin_portal.sql` | The schema above |
+| `supabase/migrations/034_superadmin_portal.sql` | The schema above (confirm number) |
 | `HANDOFF.md` | Update with portal scope and build plan |
