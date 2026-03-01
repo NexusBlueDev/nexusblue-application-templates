@@ -1,6 +1,6 @@
 # TODO — NexusBlue Environment (Cross-Project)
 
-> Last updated: 2026-02-28
+> Last updated: 2026-03-01
 > These are actions required from the NexusBlue team or clients — NOT Claude tasks.
 > Project-specific TODOs live in each project's own TODO.md.
 
@@ -75,13 +75,14 @@
 - [x] **[Dev]** Add GitHub Actions CI + Vitest + Playwright to **mcpc-website** (8 tests) — done 2026-02-28
 - [x] **[Dev]** Set GitHub repo secrets (`VERCEL_TOKEN` + `VERCEL_TEAM_ID`) on all 3 repos — done 2026-02-28
 
-### Tier 2 — Next Session
-- [ ] **[Dev]** Add GitHub Actions CI + Vitest to **cnc-platform**
-- [ ] **[Dev]** Add GitHub Actions CI + Vitest to **cain-website-022026**
-- [ ] **[Dev]** Add GitHub Actions CI + Vitest to **pet_scheduler**
-- [ ] **[Dev]** Add GitHub Actions CI + Vitest to **sectorius-website**
+### Tier 2 — DONE 2026-03-01
+- [x] **[Dev]** Add GitHub Actions CI + Vitest to **cnc-platform** (6 tests) — done 2026-03-01
+- [x] **[Dev]** Add GitHub Actions CI + Vitest to **cain-website-022026** (4 tests) — done 2026-03-01
+- [x] **[Dev]** Add GitHub Actions CI + Vitest to **pet_scheduler** (80 tests — 5 new + 75 jest→vitest) — done 2026-03-01
+- [x] **[Dev]** Add GitHub Actions CI (lint + typecheck) to **sectorius-website** — done 2026-03-01
+- [x] **[Dev]** Set GitHub repo secrets (`VERCEL_TOKEN` + `VERCEL_TEAM_ID`) on cnc-platform, cain-website-022026, sectorius-website — done 2026-03-01
 
-### Guardrails + Hardening — Next Session
+### Guardrails + Hardening — Next
 - [ ] **[Dev]** GitHub branch protection on all repos: require CI pass + no force push to main
 - [ ] **[Dev]** Add `npm audit --audit-level=high` step to CI template (`docs/github-ci-template.yml`)
 - [ ] **[Dev]** Create `scripts/rollback.sh` — promote prior Vercel deployment to production via REST API
