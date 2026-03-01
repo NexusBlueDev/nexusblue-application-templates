@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 5.2**
+**Version: 5.3**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -68,7 +68,7 @@ At the end of every session or when the user signals wrapping up:
 3. **Update MEMORY.md** if new stable patterns, gotchas, or conventions were discovered.
 4. **Run docs agent** — invoke the documentation enforcement agent (see Agent Orchestration Standard) to verify all documents are current. Fix any gaps before proceeding.
 5. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions.
-6. **Deploy if applicable** — if the project has `scripts/deploy.sh` (Vercel-hosted projects), run it after pushing. Vercel does NOT auto-deploy from the Droplet — the deploy script must be run explicitly. A push without a deploy means the live site is stale.
+6. **Deploy is automatic** — Vercel-hosted projects auto-deploy on push via GitHub integration. No manual deploy step needed. Only use `scripts/deploy.sh` as a fallback if auto-deploy fails.
 7. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
 
 ---
@@ -468,86 +468,22 @@ desktop.ini
 - **Service management:** `sudo systemctl [start|stop|restart|status] nexusblue-[service]`
 - **Env vars for services:** Store in `~/.env.projects/[project].env`, load in systemd unit with `EnvironmentFile=`
 
-### Vercel (REST API Token Pattern — Required from Droplet)
+### Vercel (GitHub Auto-Deploy — Primary Method)
 
-**Both GitHub auto-deploy and deploy hook URLs are unreliable from Droplet SSH.** Use the Vercel REST API with a personal access token instead — it is reliable and deploys from the GitHub source directly.
-
-**Setup (once per project):**
-
-1. Create a Vercel personal access token: vercel.com → Account Settings → Tokens → create `droplet-deploy`
-2. Get your project's GitHub repo ID:
-   ```bash
-   TOKEN=your_token
-   curl -s "https://api.vercel.com/v9/projects/YOUR-PROJECT-NAME?teamId=YOUR-TEAM-ID" \
-     -H "Authorization: Bearer $TOKEN" | python3 -c "
-   import sys,json; d=json.load(sys.stdin)
-   link=d.get('link',{})
-   print('repoId:', link.get('repoId'), 'org:', link.get('org'))"
-   ```
-3. Store in `.env.local` (gitignored):
-   ```
-   VERCEL_TOKEN=vcp_...
-   ```
-4. Create `scripts/deploy.sh` in the project root (committed to repo, no secrets):
-   ```bash
-   #!/bin/bash
-   set -e
-   VERCEL_TOKEN="${VERCEL_TOKEN:-$(grep '^VERCEL_TOKEN=' .env.local 2>/dev/null | cut -d= -f2-)}"
-   TEAM_ID="team_hWt6xTS7kGfR781smAzdmvzV"
-   GH_REPO_ID=YOUR-REPO-ID
-   if [ -z "$VERCEL_TOKEN" ]; then
-     echo "Error: VERCEL_TOKEN not found in env or .env.local"
-     exit 1
-   fi
-   # Usage: ./scripts/deploy.sh [preview]
-   TARGET="${1:-production}"
-   if [ "$TARGET" = "preview" ]; then
-     REF="dev"
-     TARGET_JSON=""
-     echo "Deploying YOUR-PROJECT to Vercel PREVIEW from dev branch..."
-   else
-     REF="main"
-     TARGET_JSON="\"target\":\"production\","
-     echo "Deploying YOUR-PROJECT to Vercel PRODUCTION from main branch..."
-   fi
-   RESPONSE=$(curl -s -X POST "https://api.vercel.com/v13/deployments?teamId=$TEAM_ID" \
-     -H "Authorization: Bearer $VERCEL_TOKEN" \
-     -H "Content-Type: application/json" \
-     -d "{\"name\":\"YOUR-PROJECT\",${TARGET_JSON}\"gitSource\":{\"type\":\"github\",\"org\":\"NexusBlueDev\",\"repo\":\"YOUR-REPO\",\"repoId\":$GH_REPO_ID,\"ref\":\"$REF\"}}")
-   DEPLOY_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id','ERROR'))")
-   if [ "$DEPLOY_ID" = "ERROR" ] || [ -z "$DEPLOY_ID" ]; then
-     echo "Deploy failed to start:"
-     echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
-     exit 1
-   fi
-   echo "Deployment ID: $DEPLOY_ID"
-   for i in $(seq 1 20); do
-     sleep 15
-     STATE=$(curl -s "https://api.vercel.com/v13/deployments/$DEPLOY_ID?teamId=$TEAM_ID" \
-       -H "Authorization: Bearer $VERCEL_TOKEN" \
-       | python3 -c "import sys,json; print(json.load(sys.stdin).get('readyState','?'))")
-     echo "  $i: $STATE"
-     [ "$STATE" = "READY" ] && echo "Deployed!" && exit 0
-     [ "$STATE" = "ERROR" ] || [ "$STATE" = "CANCELED" ] && echo "Failed: $STATE" && exit 1
-   done
-   echo "Timed out" && exit 1
-   ```
-5. `chmod +x scripts/deploy.sh`
+**Vercel's GitHub integration auto-deploys on every push.** This is the primary deploy method for all Vercel-hosted projects. No manual deploy step is needed — push to GitHub and Vercel builds automatically.
 
 **Deploy workflow:**
-- **Production:** `git push origin main && ./scripts/deploy.sh`
-- **Preview:** `git push origin dev && ./scripts/deploy.sh preview`
+- **Production:** `git push origin main` → Vercel auto-deploys to production
+- **Preview:** `git push origin dev` → Vercel auto-deploys to preview
 
-> **Do NOT use git post-push hooks for deployment.** Hooks are not committed to the repo, break silently when hooks directory is reset, and make deployments invisible/automatic. The explicit `./scripts/deploy.sh` call is intentional — you control when production is updated.
+**`scripts/deploy.sh` is a manual fallback only.** Each project keeps a `deploy.sh` script that triggers a deployment via the Vercel REST API. Use it only when GitHub auto-deploy fails or you need to force a redeploy without pushing a new commit. **Do NOT run `deploy.sh` after a normal `git push`** — this creates duplicate deployments.
 
 **Key facts:**
-- **NEVER use `vercel deploy` or `vercel --prod` CLI.** It deploys local files directly, bypassing GitHub. This has caused code loss — code deployed to Vercel but never pushed to GitHub is unrecoverable if the local directory is lost. Always use `scripts/deploy.sh` which deploys from the GitHub source.
+- **NEVER use `vercel deploy` or `vercel --prod` CLI.** It deploys local files directly, bypassing GitHub. This has caused code loss — code deployed to Vercel but never pushed to GitHub is unrecoverable if the local directory is lost.
 - **NEVER use `vercel link` to deploy.** Only use it for `vercel env pull` to download env vars.
-- The REST API deploys from the GitHub source (same as a normal Vercel build), not local files
-- Token lives only in `.env.local` on the Droplet — never committed
-- Rotate the token at vercel.com if it is ever shared or compromised
 - Run `npm run build` locally to catch TypeScript errors before pushing
 - Vercel environment variables for the app are set in the Vercel dashboard, not in `.env` files
+- Token for `deploy.sh` fallback lives in `.env.local` on the Droplet — never committed
 
 ### Preview Environments + Custom Domains (nexusblue.ai)
 
@@ -578,11 +514,11 @@ desktop.ini
      -H "Content-Type: application/json" \
      -d '{"ssoProtection":null}'
    ```
-4. Deploy script already supports preview: `./scripts/deploy.sh preview`
+4. Vercel auto-deploys `dev` branch pushes to the preview domain automatically.
 
 **Workflow:**
-- Develop on `dev` → push → `./scripts/deploy.sh preview` → test at `[app-name].nexusblue.ai`
-- When ready: merge `dev` → `main` → push → `./scripts/deploy.sh` → live in production
+- Develop on `dev` → push → Vercel auto-deploys → test at `[app-name].nexusblue.ai`
+- When ready: merge `dev` → `main` → push → Vercel auto-deploys to production
 
 **Domain registry:** See `/home/nexusblue/dev/nexusblue-application-templates/DOMAINS.md` for a list of all `*.nexusblue.ai` subdomain assignments. Update it when adding a new project.
 
@@ -620,7 +556,7 @@ desktop.ini
 3. No secrets in staged files
 4. HANDOFF.md is current
 5. Commit message follows convention
-6. **After push: run `./scripts/deploy.sh`** if the project is Vercel-hosted. Vercel does NOT auto-deploy from the Droplet — every push must be followed by an explicit deploy, or the live site won't update.
+6. **Do NOT run `deploy.sh` after pushing.** Vercel auto-deploys on push via GitHub integration. Running `deploy.sh` after a push creates duplicate deployments. Only use `deploy.sh` as a manual fallback if auto-deploy fails.
 
 ---
 
@@ -1674,6 +1610,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v5.1 — Added Testing & CI Standards as a global requirement for all JS/TS projects. Stack: Vitest (unit/integration) + GitHub Actions (CI gates + auto-deploy). CI workflow auto-deploys to Vercel preview on dev push and production on main push — replaces manual `./scripts/deploy.sh` calls as primary deploy path (script remains for emergency overrides). Tests mock Supabase clients and focus on critical paths: auth flows, API route auth enforcement, input validation, core business logic. Target: 10–20 meaningful path tests per project. Template: `docs/github-ci-template.yml`. Implemented on nexusblue-website, pw-app, mcpc-website (Tier 1). Root cause: zero test files and zero CI automation across all 11 projects — identified as the largest gap between NexusBlue's current ranking (~Top 15-20%) and Top 1-3% target
 - v5.0 — Added three architectural standards: (1) **Platform Architecture Standard** — defines Website/Standalone vs Platform Product project types; Platform Products get `organizations` table, `platform_role` column on profiles (`nexusblue_admin`), three-tier RLS pattern (service_role / nexusblue_admin / org-member), NexusBlue super-admin seed account, canonical RLS policy templates; (2) **Design System Standard** — canonical CSS token names and component class names enforced across all projects, font convention (Poppins/Oswald), shared library extraction threshold (3+ shared implementations triggers `@nexusblue/ui`); (3) **Agent Orchestration Standard** — three lifecycle gate agents (architect, security, qa) with structured invocation prompts, promotion rules, and HANDOFF.md documentation requirements; future agent roadmap (scale, migration, accessibility, i18n). Origin: mcpc-website session 2026-02-28
 - v5.2 — Added **documentation enforcement agent** (fourth orchestration agent). Runs automatically at session end before final commit+push. Checks: HANDOFF.md session entry freshness, TODO.md review, env var documentation, ARCHITECTURE.md currency, module docs, MEMORY.md updates, uncommitted changes. Added to Session End Protocol as mandatory step 4. Removed `.env.example` from standard files table, Document Freshness Rules, New Project Checklist, and Env Variable Setup Protocol — user preference is `.env.local` only (no committed example files). Updated Supabase deployment section with Management API pattern (IPv6-only DB hosts require `api.supabase.com/v1/projects/{ref}/database/query` instead of direct psql from Droplet). Origin: user request 2026-03-01 — "do we need a documentation agent to enforce this each time; as i am going to forget sometime"
+- v5.3 — **Vercel deploy: GitHub auto-deploy is now the primary method.** Removed `deploy.sh` as a required post-push step — Vercel's GitHub integration auto-deploys reliably on every push to `main` (production) and `dev` (preview). `scripts/deploy.sh` retained in each project as a manual fallback only. Updated: Vercel deployment section (rewritten), Session End Protocol (step 6), Pre-Push Checklist (step 6), Preview Environments workflow. Root cause: running both GitHub auto-deploy AND `deploy.sh` after every push created duplicate deployments on Vercel — every commit was building twice, wasting build minutes
 
 ---
 
