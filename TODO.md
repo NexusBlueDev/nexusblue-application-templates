@@ -21,14 +21,12 @@
 
 ---
 
-## Phase 1 — CI Guardrails & Hardening
+## Phase 1 — CI Guardrails & Hardening — DONE 2026-03-01
 
-> Independent of portal work. Can be done anytime. All 7 repos have CI green.
-
-- [ ] **[Dev]** GitHub branch protection on all repos: require CI pass + no force push to main.
-- [ ] **[Dev]** Add `npm audit --audit-level=high` step to CI template (`docs/github-ci-template.yml`).
-- [ ] **[Dev]** Create `scripts/rollback.sh` — promote prior Vercel deployment to production via REST API.
-- [ ] **[Dev]** Add git release tagging to CI deploy jobs (auto-tag on successful main deploy).
+- [x] GitHub branch protection on all 8 repos (7 projects + templates): require CI pass + no force push — done 2026-03-01
+- [x] `npm audit --audit-level=high` step added to CI template + all 7 repo workflows — done 2026-03-01
+- [x] `scripts/rollback.sh` created — promote prior Vercel deployment to production via REST API — done 2026-03-01
+- [x] Git release tagging added to all deploy-production CI jobs (6 repos with deploy) — done 2026-03-01
 
 ---
 
@@ -78,27 +76,8 @@
 
 ---
 
-## Phase 5 — Client Onboarding (WrapOps)
-
-> Depends on: Phase 0 (pw-app organizations migration 012 applied).
-
-- [ ] **[WrapOps / Client]** Confirm WrapOps admin email address.
-  Once confirmed, uncomment in `pw-app/scripts/seed-accounts.sh`.
-- [ ] **[Dev]** Complete WrapOps org #1 onboarding:
-  1. Create WrapOps row in `organizations` table
-  2. Seed WrapOps admin account (`must_reset_pw=true`)
-  3. Verify tenant isolation via RLS
-
----
-
 ## Housekeeping (Independent — Any Time)
 
-- [ ] **[Dev]** Fix **transcript-safety-pipeline** git remote → `NexusBlueDev`.
-  `git remote set-url origin https://github.com/NexusBlueDev/transcript-safety-pipeline.git`
-  Verify repo exists in NexusBlueDev org first; if not, create and push.
-- [ ] **[Dev]** Delete legacy **pw-app** test accounts (superseded by NxB_dev_2026!):
-  `pw-admin@test.com`, `pw-employee@test.com`, `pw-client@test.com`
-- [ ] **[Dev]** Fix `__CLIENT_DOMAIN__` placeholder in `nexusblue-website/CLAUDE.md`.
 - [ ] **[Dev]** Add preview domains to DOMAINS.md for any new Vercel-hosted projects.
 - [ ] **[Dev]** Set up SendGrid for **pw-app** email sharing (SENDGRID_API_KEY → Vercel env vars).
 - [ ] **[Dev]** Confirm nexusblue-website super-admin shares existing Supabase project (or create separate one).
@@ -121,6 +100,16 @@
 - [x] Set GitHub repo secrets on cnc-platform, cain-website-022026, sectorius-website — done 2026-03-01
 
 ---
+
+### Guardrails + Hardening — DONE 2026-03-01
+- [x] Branch protection on all 8 repos (require CI pass, block force push) — done 2026-03-01
+- [x] npm audit step in CI template + all 7 repo workflows — done 2026-03-01
+- [x] `scripts/rollback.sh` template created — done 2026-03-01
+- [x] Release tagging on all deploy-production CI jobs — done 2026-03-01
+
+### Housekeeping — DONE 2026-03-01
+- [x] transcript-safety-pipeline git remote fixed → NexusBlueDev (repo created + pushed) — done 2026-03-01
+- [x] `__CLIENT_NAME__` + `__CLIENT_DOMAIN__` placeholders fixed in nexusblue-website/CLAUDE.md — done 2026-03-01
 
 ## Other Completed Items
 
