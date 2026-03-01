@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 5.1**
+**Version: 5.2**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -66,9 +66,10 @@ At the end of every session or when the user signals wrapping up:
 1. **Update HANDOFF.md** — add a session entry, update current state, update next steps.
 2. **Update TODO.md** — mark completed items done (with date), add any new human actions identified during the session, remove items that are no longer relevant.
 3. **Update MEMORY.md** if new stable patterns, gotchas, or conventions were discovered.
-4. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions.
-5. **Deploy if applicable** — if the project has `scripts/deploy.sh` (Vercel-hosted projects), run it after pushing. Vercel does NOT auto-deploy from the Droplet — the deploy script must be run explicitly. A push without a deploy means the live site is stale.
-6. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
+4. **Run docs agent** — invoke the documentation enforcement agent (see Agent Orchestration Standard) to verify all documents are current. Fix any gaps before proceeding.
+5. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions.
+6. **Deploy if applicable** — if the project has `scripts/deploy.sh` (Vercel-hosted projects), run it after pushing. Vercel does NOT auto-deploy from the Droplet — the deploy script must be run explicitly. A push without a deploy means the live site is stale.
+7. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
 
 ---
 
@@ -150,7 +151,7 @@ Documentation is written **as work happens**, not after. Documents are updated *
 | `CLAUDE.md` | Project-specific Claude Code execution rules | Project creation (based on `PROJECT_CLAUDE_TEMPLATE.md`) |
 | `ARCHITECTURE.md` | System design, data flow, service boundaries | When architecture decisions are made |
 | `SETUP.md` | Full environment setup from zero | When applicable |
-| `.env.example` | Template of required environment variables | When any env var is required |
+| `.env.local` | Environment variables (gitignored, keys added directly) | Project creation |
 | `CHANGELOG.md` | What changed (user-facing) | At first release or milestone |
 
 ### TODO.md — Client & Team Action Items
@@ -201,7 +202,7 @@ Documents must stay current throughout the session — not just at the end.
 | Human action identified | Add to `TODO.md` immediately |
 | Bug fixed | Note fix in `HANDOFF.md`; remove from Known Issues if listed |
 | Architecture decision made | Update `ARCHITECTURE.md` |
-| New env var added | Update `.env.example` AND `.env.local` template, ask user to fill in keys |
+| New env var added | Add placeholder to `.env.local`, ask user to fill in keys |
 | Plan approved with new services | Write `.env.local` template with all required keys, STOP for user to fill in |
 | Session ends | Full update: `HANDOFF.md` + `TODO.md` + commit + push |
 
@@ -225,9 +226,9 @@ Every new project must have these before the first real commit:
 - [ ] `HANDOFF.md` — create at first session, update every session
 - [ ] `TODO.md` — create when first human action is identified; update every session
 - [ ] `README.md` — what it is, how to run it, one-line architecture summary
-- [ ] `.env.example` — if any environment variables are required (even one)
+- [ ] `.env.local` — add env vars directly (gitignored, no `.env.example` needed)
 - [ ] `package.json` engines field — `"engines": { "node": ">=22.0.0" }` (JS/TS projects only)
-- [ ] `.gitignore` — at minimum: `.env`, `*.env`, `!.env.example`, `node_modules/`, `__pycache__/`, `.DS_Store`, `NUL`, `Thumbs.db`, `desktop.ini`
+- [ ] `.gitignore` — at minimum: `.env`, `*.env`, `.env.local`, `node_modules/`, `__pycache__/`, `.DS_Store`, `NUL`, `Thumbs.db`, `desktop.ini`
 - [ ] `.vscode/settings.json` — `{"chat.useClaudeHooks": true}` to enable Claude Code hooks
 
 ---
@@ -267,8 +268,8 @@ Once the user has filled in `.env.local`, then set the corresponding env vars on
 - Include **every** credential a service provides — API keys, service keys, database passwords, project URLs
 - Always include the setup URL in a comment above each service group so the user knows where to go
 - **STOP** and explicitly ask the user to fill in keys before building features that depend on them
-- Update `.env.example` (committed to repo) at the same time as `.env.local` (gitignored)
-- When a new service is added mid-project, immediately update both `.env.local` and `.env.example`, then ask the user
+- Do NOT create `.env.example` files — add keys directly to `.env.local` only
+- When a new service is added mid-project, immediately add the key to `.env.local`, then ask the user to fill it in
 
 ---
 
@@ -594,7 +595,18 @@ desktop.ini
 
 ### Supabase
 - **Edge Functions require explicit deployment** — `npx supabase functions deploy [name] --no-verify-jwt --project-ref [ref]`.
-- **Database migrations are manual.** Run SQL in the Supabase SQL Editor.
+- **Database migrations via Management API.** The Droplet cannot connect directly to Supabase databases (IPv6-only hosts, Droplet is IPv4). Use the Supabase Management API instead:
+  ```bash
+  PROJECT_REF=$(grep '^NEXT_PUBLIC_SUPABASE_URL=' .env.local | cut -d= -f2- | sed 's|https://||' | sed 's|\.supabase\.co.*||')
+  ACCESS_TOKEN=$(grep '^SUPABASE_ACCESS_TOKEN=' .env.local | cut -d= -f2-)
+  SQL=$(cat path/to/migration.sql)
+  curl -s -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$(python3 -c "import json,sys; print(json.dumps({'query': sys.stdin.read()}))" <<< "$SQL")"
+  ```
+  **Requires:** `SUPABASE_ACCESS_TOKEN` in `.env.local` — get from supabase.com/dashboard → Profile → Access Tokens (starts with `sbp_`). This is an account-level token, same value across all projects.
+- **Region awareness:** nexusblue-website is in `us-east-2`. Check with `GET api.supabase.com/v1/projects/{ref}` if pooler connections are needed.
 - **RLS is enabled on all tables.** Use `service_role` key for backend operations.
 
 ### GitHub Pages (Static PWA Apps)
@@ -1444,13 +1456,14 @@ Load via `next/font/google` with `display: 'swap'`. CSS variables: `--font-poppi
 
 Orchestration agents are specialized subagents invoked at critical lifecycle gates. They protect architectural quality, catch security issues before production, and act as a second opinion when a single session can miss cross-cutting concerns.
 
-### The Three Orchestration Agents
+### The Four Orchestration Agents
 
 | Agent | Gate | What It Blocks |
 |-------|------|---------------|
 | **architect** | Module PLANNING → BUILDING | Code cannot be written until schema and architecture are verified |
 | **security** | New API routes → merge to `main` | Routes cannot ship until auth / RLS / validation is confirmed clean |
 | **qa** | Module ADMIN → LIVE (MVP) | Client-facing feature cannot go live until completeness is verified |
+| **docs** | Session end → commit + push | Session cannot close until all documentation is current |
 
 ### Invocation Patterns
 
@@ -1493,11 +1506,27 @@ Check:
 Return: PASS, or BLOCKING ISSUES with what's missing.
 ```
 
+**Docs review** (before session close — automatically invoked at session end):
+```
+Audit documentation freshness for [project-path].
+Check:
+1. HANDOFF.md has a session entry for today's date with: what changed, current state, next steps
+2. HANDOFF.md "Project State" and "Next Up" sections reflect the actual current state (not stale from a prior session)
+3. TODO.md exists and has been reviewed — completed items marked done with date, new human actions added
+4. If new env vars were added this session: .env.local updated with placeholders
+5. If architecture decisions were made: ARCHITECTURE.md updated (or created if absent)
+6. If new modules were added: docs/modules/{module}/ directory exists with required files
+7. MEMORY.md updated if new stable patterns or gotchas were discovered
+8. All changes are committed and pushed — no uncommitted documentation sitting locally
+Return: PASS, or GAPS FOUND listing each missing/stale document with what needs updating.
+```
+
 ### Invocation Rules
 
 - **Architect review blocks BUILDING.** No module code is written until architect review passes. Scaffolding and type files (`src/types/{module}.ts`) are exempt.
 - **Security review blocks merging to `main`.** New API routes do not ship without a security review pass. Admin-only internal routes may be waived with explicit HANDOFF.md notation.
 - **QA review is required before client-facing features ship.** Internal-only MVP phases may proceed without QA review — it becomes mandatory when clients can access the feature.
+- **Docs review runs automatically at session end.** Before the final commit+push, invoke the docs agent to verify all documentation is current. If it returns GAPS FOUND, fix them before closing. This is mandatory — the user has explicitly requested automated enforcement because documentation drift is a recurring risk.
 - **Document every review in HANDOFF.md.** Format: `Architect review: PASS (2026-02-28)`. Waivers: `Security review: WAIVED — admin-only route, no external surface (2026-02-28)`.
 - **A PASS is a snapshot.** Reviews reflect code state at invocation time. Significant changes after a PASS may require re-review at your judgment.
 
@@ -1644,6 +1673,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v4.9 — Added Module Standard as a non-negotiable global rule. Canonical standard at `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md` v1.1. Key additions: AI-first requirements (streaming default, Sonnet/Haiku/Code rule, prompt caching mandate), Monetization requirements (billing unit before migration, `{prefix}_usage` table in every module, three commercial modes: Embedded/Managed Product/Standalone App), Role Capability Matrix (module_permissions + module_defaults tables, org admin controls within NexusBlue-set ceiling). MODULE_STANDARD.md updated to v1.1 with these three sections. Reference implementations: WebMap + AppVault (nexusblue-website). Origin: AppVault architecture session 2026-02-28
 - v5.1 — Added Testing & CI Standards as a global requirement for all JS/TS projects. Stack: Vitest (unit/integration) + GitHub Actions (CI gates + auto-deploy). CI workflow auto-deploys to Vercel preview on dev push and production on main push — replaces manual `./scripts/deploy.sh` calls as primary deploy path (script remains for emergency overrides). Tests mock Supabase clients and focus on critical paths: auth flows, API route auth enforcement, input validation, core business logic. Target: 10–20 meaningful path tests per project. Template: `docs/github-ci-template.yml`. Implemented on nexusblue-website, pw-app, mcpc-website (Tier 1). Root cause: zero test files and zero CI automation across all 11 projects — identified as the largest gap between NexusBlue's current ranking (~Top 15-20%) and Top 1-3% target
 - v5.0 — Added three architectural standards: (1) **Platform Architecture Standard** — defines Website/Standalone vs Platform Product project types; Platform Products get `organizations` table, `platform_role` column on profiles (`nexusblue_admin`), three-tier RLS pattern (service_role / nexusblue_admin / org-member), NexusBlue super-admin seed account, canonical RLS policy templates; (2) **Design System Standard** — canonical CSS token names and component class names enforced across all projects, font convention (Poppins/Oswald), shared library extraction threshold (3+ shared implementations triggers `@nexusblue/ui`); (3) **Agent Orchestration Standard** — three lifecycle gate agents (architect, security, qa) with structured invocation prompts, promotion rules, and HANDOFF.md documentation requirements; future agent roadmap (scale, migration, accessibility, i18n). Origin: mcpc-website session 2026-02-28
+- v5.2 — Added **documentation enforcement agent** (fourth orchestration agent). Runs automatically at session end before final commit+push. Checks: HANDOFF.md session entry freshness, TODO.md review, env var documentation, ARCHITECTURE.md currency, module docs, MEMORY.md updates, uncommitted changes. Added to Session End Protocol as mandatory step 4. Removed `.env.example` from standard files table, Document Freshness Rules, New Project Checklist, and Env Variable Setup Protocol — user preference is `.env.local` only (no committed example files). Updated Supabase deployment section with Management API pattern (IPv6-only DB hosts require `api.supabase.com/v1/projects/{ref}/database/query` instead of direct psql from Droplet). Origin: user request 2026-03-01 — "do we need a documentation agent to enforce this each time; as i am going to forget sometime"
 
 ---
 
