@@ -66,10 +66,11 @@ At the end of every session or when the user signals wrapping up:
 1. **Update HANDOFF.md** — add a session entry, update current state, update next steps.
 2. **Update TODO.md** — mark completed items done (with date), add any new human actions identified during the session, remove items that are no longer relevant.
 3. **Update MEMORY.md** if new stable patterns, gotchas, or conventions were discovered.
-4. **Run docs agent** — invoke the documentation enforcement agent (see Agent Orchestration Standard) to verify all documents are current. Fix any gaps before proceeding.
-5. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions.
-6. **Deploy is automatic** — Vercel-hosted projects auto-deploy on push via GitHub integration. No manual deploy step needed. Only use `scripts/deploy.sh` as a fallback if auto-deploy fails.
-7. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
+4. **Update `project_library`** — if new features, tools, or integrations were shipped this session, INSERT a row into the project's `project_library` table via Supabase Management API. Category: `feature`, `tool`, `integration`, `architecture`, or `highlight`. Include title, summary (one line for card), content_md (markdown detail), and tags. Use `ON CONFLICT (title) DO NOTHING` for idempotency. Skip this step for projects without a Supabase database.
+5. **Run docs agent** — invoke the documentation enforcement agent (see Agent Orchestration Standard) to verify all documents are current. Fix any gaps before proceeding.
+6. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions.
+7. **Deploy is automatic** — Vercel-hosted projects auto-deploy on push via GitHub integration. No manual deploy step needed. Only use `scripts/deploy.sh` as a fallback if auto-deploy fails.
+8. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
 
 ---
 
