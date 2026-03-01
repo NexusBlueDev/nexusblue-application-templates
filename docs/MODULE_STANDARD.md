@@ -533,7 +533,7 @@ A module is portable (can be lifted into another project) when:
 
 - [ ] All lib functions take explicit parameters (no hidden global state)
 - [ ] Database table prefix is unique and consistent
-- [ ] All env var dependencies are documented in `.env.example`
+- [ ] All env var dependencies are documented in `.env.local`
 - [ ] Types are in `src/types/{module}.ts` (not mixed into `index.ts`)
 - [ ] Agent registry entries are isolated (not dependent on other agents)
 - [ ] `{prefix}_usage` table exists and metering is live
