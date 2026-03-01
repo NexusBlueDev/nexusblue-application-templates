@@ -3,99 +3,133 @@
 > Last updated: 2026-03-01
 > These are actions required from the NexusBlue team or clients — NOT Claude tasks.
 > Project-specific TODOs live in each project's own TODO.md.
+> Items are ordered by dependency chain — earlier phases unblock later ones.
 
 ---
 
-## Blocking (must be done before dependent features can be built)
+## Phase 0 — Blocking Prerequisites
 
-- [ ] **[Dev]** Apply `organizations` table migration to **pw-app** (migration 012 pending).
-  Required before WrapOps multi-tenancy is real and org #1 can be formally assigned.
+> Nothing downstream can move until these are done.
+
+- [ ] **[Dev]** Apply AppVault migrations **031 + 032 + 033** to **nexusblue-website** Supabase.
+  Blocks: Super-admin portal (migration 038) cannot be applied until these land.
+  Migration numbering: 034=appvault_consulting, 035–037 confirmed taken. Portal = **038**.
+
+- [ ] **[Dev]** Apply `organizations` table migration to **pw-app** (migration 012).
+  Blocks: WrapOps multi-tenancy, org #1 assignment, client onboarding.
   Script: `supabase/migrations/012_organizations.sql` (to be created)
 
-- [ ] **[Dev]** Apply AppVault migrations **031 + 032 + 033** to **nexusblue-website**.
-  Required before building the `/nexusblue` super-admin portal (migration 038).
-  Migration numbering status: 034=appvault_consulting, 035, 036, and 037 also confirmed taken (2026-03-01). Super-admin portal = **038**.
+---
+
+## Phase 1 — CI Guardrails & Hardening
+
+> Independent of portal work. Can be done anytime. All 7 repos have CI green.
+
+- [ ] **[Dev]** GitHub branch protection on all repos: require CI pass + no force push to main.
+- [ ] **[Dev]** Add `npm audit --audit-level=high` step to CI template (`docs/github-ci-template.yml`).
+- [ ] **[Dev]** Create `scripts/rollback.sh` — promote prior Vercel deployment to production via REST API.
+- [ ] **[Dev]** Add git release tagging to CI deploy jobs (auto-tag on successful main deploy).
 
 ---
 
-## High Priority (do soon)
+## Phase 2 — Super-Admin Portal Foundation
 
-- [ ] **[Dev]** Fix **transcript-safety-pipeline** git remote — currently points to `wrmagnuson` personal account, not `NexusBlueDev`.
-  Fix: `git remote set-url origin https://github.com/NexusBlueDev/transcript-safety-pipeline.git`
-  Verify the repo exists in NexusBlueDev org first; if not, create it and push.
+> Depends on: Phase 0 (nexusblue-website migrations 031–033 applied).
+> Spec: `docs/NEXUSBLUE_SUPERADMIN_PLAN.md` v1.3
 
-- [ ] **[WrapOps / Client]** Confirm WrapOps admin email address for **pw-app** onboarding.
-  Once confirmed, uncomment `admin@wrapops.com` (or correct email) in `pw-app/scripts/seed-accounts.sh`.
+### 2a. Database & Auth (build order steps 1–5)
 
-- [ ] **[Dev]** Delete legacy **pw-app** test accounts from Supabase (superseded by NxB_dev_2026! accounts):
-  - pw-admin@test.com (password: "test")
-  - pw-employee@test.com (password: "test")
-  - pw-client@test.com (password: "test")
+- [ ] **[Dev]** Write and apply **migration 038** — 9 `dev_*` tables + `dev_portal_config` + RLS + seed data.
+  Tables: dev_projects, dev_client_orgs, dev_modules, dev_agent_logs, dev_roadmap_items, dev_performance_snapshots, dev_ai_usage_summary, dev_llm_brief_overrides, dev_portal_config.
+- [ ] **[Dev]** Seed `bill@nexusblue.io` as super-admin — run updated seed script, set `platform_role = 'nexusblue_admin'`, set initial PIN hash in `dev_portal_config`.
+- [ ] **[Dev]** Update `src/middleware.ts` — add `/nexusblue` platform_role gate + portal cookie check + `/nexusblue/verify` PIN bypass.
+- [ ] **[Dev]** Build PIN verification flow — `/nexusblue/verify` page + `verifyPortalPin` server action + install `bcryptjs`.
+- [ ] **[Dev]** Add "NexusBlue Command" nav entry — visible only to `platform_role = 'nexusblue_admin'`.
 
-- [ ] **[Dev]** Fix `__CLIENT_DOMAIN__` placeholder still in `nexusblue-website/CLAUDE.md`.
+### 2b. Layout & Hub (build order steps 6–7)
+
+- [ ] **[Dev]** Create `/nexusblue` route group with sidebar nav (Environment / IP / AI Monitor / Industry / Roadmap / Health).
+- [ ] **[Dev]** Build Hub page (`/nexusblue`) — dashboard cards: project counts, tenant count, agent health, AI usage MTD, performance alerts, droplet health.
 
 ---
 
-## Infrastructure & Services
+## Phase 3 — Super-Admin Portal Sections
 
+> Depends on: Phase 2 complete. Each section is independently useful — ship in order.
+
+- [ ] **[Dev]** **Environment section** (`/nexusblue/environment`) — Projects table, Tenants table, Agent Log feed, LLM Brief viewer + clipboard copy.
+- [ ] **[Dev]** **IP Registry** (`/nexusblue/ip`) — Project deep-dive cards, Module Library table, Documentation viewer (renders GitHub markdown).
+- [ ] **[Dev]** **Health section** (`/nexusblue/health`) — Vercel build status per project, Supabase health, Droplet health (RAM/disk/load), Agent schedule + status.
+- [ ] **[Dev]** **AI Monitor** (`/nexusblue/ai-monitor`) — Usage charts (MTD cost by project, tokens by model), Adherence checklist (scored per project), Feature performance.
+- [ ] **[Dev]** **Roadmap section** (`/nexusblue/roadmap`) — AI Suggestions feed (accept/dismiss/snooze), Backlog table (editable, sortable by project + priority).
+- [ ] **[Dev]** **Industry Benchmark** (`/nexusblue/industry`) — Core Web Vitals vs targets, NexusBlue methodology vs industry standard comparison.
+- [ ] **[Dev]** **Settings** (`/nexusblue/settings`) — Change Portal PIN (current PIN → new PIN → re-hash).
+
+---
+
+## Phase 4 — Portal Agents
+
+> Depends on: Phase 3 (at minimum Environment + Health sections live).
+> These write to `dev_*` tables and surface results in portal sections.
+
+- [ ] **[Dev]** **Roadmap agent** — triggered after architect/security/QA cycles. Reads `dev_agent_logs`, generates prioritized improvement suggestions → writes to `dev_roadmap_items`.
+- [ ] **[Dev]** **Performance agent** — weekly per live project. Fetches PageSpeed Insights, writes to `dev_performance_snapshots`, flags below-target metrics.
+- [ ] **[Dev]** **Sync agent** — monthly per Platform Product. Reads `_usage` tables from each product's Supabase, aggregates → writes to `dev_ai_usage_summary`.
+
+---
+
+## Phase 5 — Client Onboarding (WrapOps)
+
+> Depends on: Phase 0 (pw-app organizations migration 012 applied).
+
+- [ ] **[WrapOps / Client]** Confirm WrapOps admin email address.
+  Once confirmed, uncomment in `pw-app/scripts/seed-accounts.sh`.
+- [ ] **[Dev]** Complete WrapOps org #1 onboarding:
+  1. Create WrapOps row in `organizations` table
+  2. Seed WrapOps admin account (`must_reset_pw=true`)
+  3. Verify tenant isolation via RLS
+
+---
+
+## Housekeeping (Independent — Any Time)
+
+- [ ] **[Dev]** Fix **transcript-safety-pipeline** git remote → `NexusBlueDev`.
+  `git remote set-url origin https://github.com/NexusBlueDev/transcript-safety-pipeline.git`
+  Verify repo exists in NexusBlueDev org first; if not, create and push.
+- [ ] **[Dev]** Delete legacy **pw-app** test accounts (superseded by NxB_dev_2026!):
+  `pw-admin@test.com`, `pw-employee@test.com`, `pw-client@test.com`
+- [ ] **[Dev]** Fix `__CLIENT_DOMAIN__` placeholder in `nexusblue-website/CLAUDE.md`.
 - [ ] **[Dev]** Add preview domains to DOMAINS.md for any new Vercel-hosted projects.
-  Current registry: `nexusblue-application-templates/DOMAINS.md`
-  mcpc-website and other projects may need `[slug].nexusblue.ai` preview domains set up.
-
-- [ ] **[Dev]** Create a Supabase project for **nexusblue-website** super-admin portal
-  (if it needs its own project — or confirm it shares the existing nexusblue-website project).
-  See `docs/NEXUSBLUE_SUPERADMIN_PLAN.md` for full spec.
+- [ ] **[Dev]** Set up SendGrid for **pw-app** email sharing (SENDGRID_API_KEY → Vercel env vars).
+- [ ] **[Dev]** Confirm nexusblue-website super-admin shares existing Supabase project (or create separate one).
 
 ---
 
-## Client Content & Onboarding
-
-- [ ] **[WrapOps / Client]** WrapOps org #1 onboarding:
-  1. Confirm admin email
-  2. Apply organizations migration to pw-app
-  3. Create WrapOps row in `organizations` table
-  4. Seed WrapOps admin account (must_reset_pw=true)
-
----
-
-## Nice to Have
-
-- [ ] **[Dev]** Set up SendGrid for **pw-app** email sharing (report sharing via email, not just link).
-  Needs: SENDGRID_API_KEY in .env.local → Vercel env vars.
-
-- [ ] **[Dev]** Add preview domain `mcpc-website.nexusblue.ai` to Vercel mcpc-website project (dev branch).
-
----
-
-## Testing & CI Implementation
+## Testing & CI — Completed
 
 ### Tier 1 — DONE 2026-02-28
-- [x] **[Dev]** Add GitHub Actions CI + Vitest to **nexusblue-website** (10 tests) — done 2026-02-28
-- [x] **[Dev]** Add GitHub Actions CI + Vitest to **pw-app** (21 tests: auth, AI, autosave, reports) — done 2026-02-28
-- [x] **[Dev]** Add GitHub Actions CI + Vitest + Playwright to **mcpc-website** (8 tests) — done 2026-02-28
-- [x] **[Dev]** Set GitHub repo secrets (`VERCEL_TOKEN` + `VERCEL_TEAM_ID`) on all 3 repos — done 2026-02-28
+- [x] Add GitHub Actions CI + Vitest to **nexusblue-website** (10 tests) — done 2026-02-28
+- [x] Add GitHub Actions CI + Vitest to **pw-app** (23 tests: auth, AI, autosave, reports) — done 2026-02-28
+- [x] Add GitHub Actions CI + Vitest + Playwright to **mcpc-website** (8 tests) — done 2026-02-28
+- [x] Set GitHub repo secrets (`VERCEL_TOKEN` + `VERCEL_TEAM_ID`) on all 3 repos — done 2026-02-28
 
 ### Tier 2 — DONE 2026-03-01
-- [x] **[Dev]** Add GitHub Actions CI + Vitest to **cnc-platform** (6 tests) — done 2026-03-01
-- [x] **[Dev]** Add GitHub Actions CI + Vitest to **cain-website-022026** (4 tests) — done 2026-03-01
-- [x] **[Dev]** Add GitHub Actions CI + Vitest to **pet_scheduler** (80 tests — 5 new + 75 jest→vitest) — done 2026-03-01
-- [x] **[Dev]** Add GitHub Actions CI (lint + typecheck) to **sectorius-website** — done 2026-03-01
-- [x] **[Dev]** Set GitHub repo secrets (`VERCEL_TOKEN` + `VERCEL_TEAM_ID`) on cnc-platform, cain-website-022026, sectorius-website — done 2026-03-01
+- [x] Add GitHub Actions CI + Vitest to **cnc-platform** (6 tests) — done 2026-03-01
+- [x] Add GitHub Actions CI + Vitest to **cain-website-022026** (4 tests) — done 2026-03-01
+- [x] Add GitHub Actions CI + Vitest to **pet_scheduler** (80 tests — 5 new + 75 jest→vitest) — done 2026-03-01
+- [x] Add GitHub Actions CI (lint + typecheck) to **sectorius-website** — done 2026-03-01
+- [x] Set GitHub repo secrets on cnc-platform, cain-website-022026, sectorius-website — done 2026-03-01
 
-### Guardrails + Hardening — Next
-- [ ] **[Dev]** GitHub branch protection on all repos: require CI pass + no force push to main
-- [ ] **[Dev]** Add `npm audit --audit-level=high` step to CI template (`docs/github-ci-template.yml`)
-- [ ] **[Dev]** Create `scripts/rollback.sh` — promote prior Vercel deployment to production via REST API
-- [ ] **[Dev]** Add git release tagging to CI deploy jobs (auto-tag on successful main deploy)
+---
 
-## Completed
+## Other Completed Items
 
-- [x] **[Dev]** Add `## Project Type` section to all 11 project CLAUDE.md files — done 2026-02-28
-- [x] **[Dev]** Create `scripts/seed-accounts.sh` for all projects — done 2026-02-28
-- [x] **[Dev]** Elevate pw-app to Platform Product classification — done 2026-02-28
-- [x] **[Dev]** Add `## Test Accounts` to all seeded project HANDOFF.md files — done 2026-02-28
-- [x] **[Dev]** Create EXTERNAL_LLM_BRIEF.md for sharing NexusBlue context with outside AIs — done 2026-02-28
-- [x] **[Dev]** Create NEW_PROJECT_PROMPT.md — copy-paste project starter prompt — done 2026-02-28
-- [x] **[Dev]** Create NEXUSBLUE_SUPERADMIN_PLAN.md — full spec for `/nexusblue` portal — done 2026-02-28
-- [x] **[Dev]** Update MEMORY.md with cross-session stable patterns — done 2026-02-28
-- [x] **[Dev]** Update PROJECT_CLAUDE_TEMPLATE.md with v5.0 Project Type section — done 2026-02-28
+- [x] Add `## Project Type` section to all 11 project CLAUDE.md files — done 2026-02-28
+- [x] Create `scripts/seed-accounts.sh` for all projects — done 2026-02-28
+- [x] Elevate pw-app to Platform Product classification — done 2026-02-28
+- [x] Add `## Test Accounts` to all seeded project HANDOFF.md files — done 2026-02-28
+- [x] Create EXTERNAL_LLM_BRIEF.md for sharing NexusBlue context with outside AIs — done 2026-02-28
+- [x] Create NEW_PROJECT_PROMPT.md — copy-paste project starter prompt — done 2026-02-28
+- [x] Create NEXUSBLUE_SUPERADMIN_PLAN.md — full spec for `/nexusblue` portal — done 2026-02-28
+- [x] Update MEMORY.md with cross-session stable patterns — done 2026-02-28
+- [x] Update PROJECT_CLAUDE_TEMPLATE.md with v5.0 Project Type section — done 2026-02-28
