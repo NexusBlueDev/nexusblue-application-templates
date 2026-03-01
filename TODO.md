@@ -1,6 +1,6 @@
 # TODO — NexusBlue Environment (Cross-Project)
 
-> Last updated: 2026-03-01 (Phase 2a DONE — super-admin portal DB + auth foundation)
+> Last updated: 2026-03-01 (Phase 2 DONE — super-admin portal foundation live)
 > These are actions required from the NexusBlue team or clients — NOT Claude tasks.
 > Project-specific TODOs live in each project's own TODO.md.
 > Items are ordered by dependency chain — earlier phases unblock later ones.
@@ -25,24 +25,24 @@
 
 ---
 
-## Phase 2 — Super-Admin Portal Foundation
+## Phase 2 — Super-Admin Portal Foundation — DONE 2026-03-01
 
-> Depends on: Phase 0 (nexusblue-website migrations 031–033 applied).
 > Spec: `docs/NEXUSBLUE_SUPERADMIN_PLAN.md` v1.3
 
-### 2a. Database & Auth (build order steps 1–5) — DONE 2026-03-01
+### 2a. Database & Auth — DONE 2026-03-01
 
-- [x] **[Dev]** Write and apply **migration 038** — 9 `dev_*` tables + RLS + seed data (11 projects, 6 modules, WrapOps org, portal PIN config) — done 2026-03-01
-- [x] **[Dev]** Seed `bill@nexusblue.io` as super-admin — `platform_role = 'nexusblue_admin'` set, PIN hash (6163) seeded in `dev_portal_config` — done 2026-03-01
-- [x] **[Dev]** Install `bcryptjs` + `@types/bcryptjs` for PIN verification — done 2026-03-01
-- [ ] **[Dev]** Update `src/middleware.ts` — add `/nexusblue` platform_role gate + portal cookie check + `/nexusblue/verify` PIN bypass.
-- [ ] **[Dev]** Build PIN verification flow — `/nexusblue/verify` page + `verifyPortalPin` server action.
-- [ ] **[Dev]** Add "NexusBlue Command" nav entry — visible only to `platform_role = 'nexusblue_admin'`.
+- [x] **[Dev]** Write and apply **migration 038** — 9 `dev_*` tables + RLS + seed data — done 2026-03-01
+- [x] **[Dev]** Seed `bill@nexusblue.io` as super-admin + PIN hash — done 2026-03-01
+- [x] **[Dev]** Install `bcryptjs` + `@types/bcryptjs` — done 2026-03-01
+- [x] **[Dev]** Update middleware — `/nexusblue` platform_role gate + PIN cookie check — done 2026-03-01
+- [x] **[Dev]** Build PIN verification flow — `/nexusblue/verify` page + `verifyPortalPin` action — done 2026-03-01
+- [x] **[Dev]** Add "NexusBlue Command" nav entry + `isSuperAdmin` in auth provider — done 2026-03-01
 
-### 2b. Layout & Hub (build order steps 6–7)
+### 2b. Layout & Hub — DONE 2026-03-01
 
-- [ ] **[Dev]** Create `/nexusblue` route group with sidebar nav (Environment / IP / AI Monitor / Industry / Roadmap / Health).
-- [ ] **[Dev]** Build Hub page (`/nexusblue`) — dashboard cards: project counts, tenant count, agent health, AI usage MTD, performance alerts, droplet health.
+- [x] **[Dev]** Create `/nexusblue` route group with portal sidebar (8 nav items) — done 2026-03-01
+- [x] **[Dev]** Build Hub page — stat cards, agent logs, roadmap items, quick links — done 2026-03-01
+- [x] **[Dev]** Placeholder pages for all 7 portal sections — done 2026-03-01
 
 ---
 
