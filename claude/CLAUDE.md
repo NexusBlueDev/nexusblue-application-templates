@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 5.4**
+**Version: 5.5**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -326,6 +326,94 @@ Claude Code automatically manages `~/.claude/projects/[full-path]/memory/MEMORY.
 | `CLAUDE.md` | Claude only | Yes | Execution rules for this project |
 
 Update auto-memory when you discover stable patterns, recurring issues, or project-specific rules that should survive across sessions on this machine. Don't duplicate what's already in HANDOFF.md or CLAUDE.md.
+
+---
+
+## Component Type Decision Framework
+
+Every new piece of work in a NexusBlue project must be classified before implementation begins. The classification determines which standard governs it, how much structure is required, and what governance gates apply.
+
+### Classification Table
+
+| Type | What It Is | Governance | Standard |
+|------|-----------|------------|----------|
+| **Module** | Self-contained feature domain with DB tables, UI pages, API routes, feature gates | Heavy — docs before code, architect review, billing unit | `docs/MODULE_STANDARD.md` |
+| **Agent** | Scheduled/triggered background task that processes data and writes results | Medium — route pattern, logging, cron registration | `docs/AGENT_STANDARD.md` |
+| **Integration** | Wrapper around an external API (auth + typed queries + error handling) | Medium — auth module, type isolation, env vars | `docs/INTEGRATION_STANDARD.md` |
+| **Script** | One-off or on-demand utility (seed data, migrate, generate, clean up) | Light — `scripts/` directory, clear usage comment at top |
+| **Service** | Long-running background process (systemd unit on Droplet) | Medium — systemd unit, log rotation, health check |
+| **Microservice** | Independently deployable service with its own repo, DB, and API | Heavy — own repo, own CI, API contract, versioning | Future standard |
+
+### Decision Flowchart
+
+When new work is proposed, answer these questions in order:
+
+1. **Does it wrap an external API?** → **Integration**
+   - Examples: Google PageSpeed, Stripe, SendGrid, Anthropic, GA4, Search Console
+   - If it later needs its own DB tables or UI → promote to Module
+
+2. **Does it run on a schedule or in response to an event (no UI)?** → **Agent**
+   - Examples: weekly performance snapshots, daily freshness checks, email queue processing
+   - If it later needs UI pages or feature gates → promote to Module
+
+3. **Does it have its own DB tables, UI pages, AND feature gates?** → **Module**
+   - Examples: WebMap, AppVault, conversation intelligence, billing
+   - This is the heaviest governance tier — docs before code, architect review required
+
+4. **Is it a one-off utility or operational task?** → **Script**
+   - Examples: seed-accounts.sh, deploy.sh, migrate data, generate reports
+   - If it starts running on a schedule → promote to Agent
+
+5. **Does it run continuously as a background process?** → **Service**
+   - Examples: WebSocket server, queue worker, reverse proxy config
+   - Lives on the Droplet as a systemd unit under `nexusblue-servers`
+
+6. **Does it need its own repo, deploy pipeline, and independent scaling?** → **Microservice**
+   - Not yet needed. When the first case arises, create `docs/MICROSERVICE_STANDARD.md`
+
+### Promotion Rules
+
+Components naturally grow in complexity. When they cross a threshold, promote them to the next governance tier:
+
+| From | To | Trigger |
+|------|----|---------|
+| Script → Agent | Needs a schedule, logging, or error tracking |
+| Agent → Module | Needs UI pages, feature gates, billing metering, or 3+ dedicated DB tables |
+| Integration → Module | Needs its own DB tables, UI pages, feature gates, or billing metering |
+| Module → Microservice | Needs independent scaling, separate deploy pipeline, or cross-project consumption |
+
+When promoting, follow the target standard's checklist from scratch. Don't skip steps because "it was working before."
+
+### Automatic Behavior
+
+When any new work is described in a prompt:
+
+1. **Classify it** using the flowchart above. State the classification explicitly: "This is an **Integration** (wraps Google Analytics Data API)."
+2. **Apply the correct standard.** Read the governing standard document before writing any code.
+3. **Check for promotion triggers.** If the work crosses a governance boundary, flag it: "This started as an Integration but needs DB tables — promoting to Module."
+4. **Never under-classify to avoid governance.** If it has DB tables and UI, it's a Module even if it started as a script. Apply Module Standard.
+5. **Document the classification** in ARCHITECTURE.md under the appropriate section (Modules, Agents, Integrations, Scripts).
+
+### Scripts Standard (Lightweight)
+
+Scripts don't have a separate standard document — they're governed by these simple rules:
+
+- **Location:** `scripts/` directory at project root
+- **Naming:** `{verb}-{noun}.sh` or `{verb}-{noun}.ts` (e.g., `seed-accounts.sh`, `deploy.sh`, `migrate-data.ts`)
+- **Header comment:** Purpose, usage, prerequisites (env vars, tools)
+- **No silent failures:** Scripts must exit non-zero on error (`set -e` for bash)
+- **Idempotent where possible:** Running twice should not corrupt data
+- **Never committed secrets:** Scripts reference env vars, never contain raw keys
+
+### Services Standard (Droplet Background Processes)
+
+Services don't have a separate standard document yet — they're governed by `nexusblue-servers` conventions:
+
+- **Systemd unit:** `config/services/nexusblue-{name}.service`
+- **Env vars:** `~/.env.projects/{name}.env` loaded via `EnvironmentFile=`
+- **Logs:** `/var/log/nexusblue/{name}.log` (symlinked to `~/logs/services/`)
+- **Health check:** Must respond to a health endpoint or signal readiness
+- **Restart policy:** `Restart=on-failure` with `RestartSec=5`
 
 ---
 
@@ -1615,6 +1703,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v5.2 — Added **documentation enforcement agent** (fourth orchestration agent). Runs automatically at session end before final commit+push. Checks: HANDOFF.md session entry freshness, TODO.md review, env var documentation, ARCHITECTURE.md currency, module docs, MEMORY.md updates, uncommitted changes. Added to Session End Protocol as mandatory step 4. Removed `.env.example` from standard files table, Document Freshness Rules, New Project Checklist, and Env Variable Setup Protocol — user preference is `.env.local` only (no committed example files). Updated Supabase deployment section with Management API pattern (IPv6-only DB hosts require `api.supabase.com/v1/projects/{ref}/database/query` instead of direct psql from Droplet). Origin: user request 2026-03-01 — "do we need a documentation agent to enforce this each time; as i am going to forget sometime"
 - v5.3 — **Vercel deploy: GitHub auto-deploy is now the primary method.** Removed `deploy.sh` as a required post-push step — Vercel's GitHub integration auto-deploys reliably on every push to `main` (production) and `dev` (preview). `scripts/deploy.sh` retained in each project as a manual fallback only. Updated: Vercel deployment section (rewritten), Session End Protocol (step 6), Pre-Push Checklist (step 6), Preview Environments workflow. Root cause: running both GitHub auto-deploy AND `deploy.sh` after every push created duplicate deployments on Vercel — every commit was building twice, wasting build minutes
 - v5.4 — **Docs enforcement gate strengthened.** Session End Protocol step 5 upgraded to MANDATORY GATE — docs agent must return PASS before any commit+push, not just at session end. Added explicit rule: "The user should never have to ask 'is everything documented?' — that means this gate was skipped." Added callout that the gate applies to ALL pushes (mid-session and session-end), not just the final one. Root cause: mcpc-website session 8 pushed two work commits without running docs agent, requiring a third cleanup commit after the user caught the gap
+- v5.5 — **Component Type Decision Framework.** Added classification system for all new work: Module (heavy governance), Agent (medium), Integration (medium), Script (light), Service (medium), Microservice (heavy/future). Includes decision flowchart, promotion rules (Script→Agent→Module, Integration→Module, Module→Microservice), automatic classification behavior, and lightweight standards for Scripts and Services. Created companion documents: `docs/AGENT_STANDARD.md` v1.0 (route pattern, cron registration, logging, partial success, AI agent rules) and `docs/INTEGRATION_STANDARD.md` v1.0 (auth patterns, type isolation, caching, error handling, env var convention). Updated MODULE_STANDARD.md v1.3 with cross-references. Origin: user request 2026-03-01 — "I want to make sure that the system is ready to scale and can help decide the right path"
 
 ---
 

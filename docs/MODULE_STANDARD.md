@@ -1,10 +1,11 @@
 # NexusBlue Module Standard
 
-> **Version:** 1.2
+> **Version:** 1.3
 > **Applies to:** All feature modules in all NexusBlue Next.js + Supabase projects
 > **Canonical location:** `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md`
 > **Install to project:** `{project}/docs/modules/MODULE_STANDARD.md` (copy or symlink)
 > **Reference implementations:** WebMap (nexusblue-website), AppVault (nexusblue-website)
+> **Related:** AGENT_STANDARD.md (for background automation), INTEGRATION_STANDARD.md (for external API connections)
 > **Project type note:** `organization_id` on module tables, the three-tier RLS policy template, and `{prefix}_usage.organization_id` are **Platform Product requirements only**. Website / Standalone projects omit these. See the Platform Architecture Standard in global `CLAUDE.md`.
 
 ---
@@ -17,6 +18,9 @@ A module is a self-contained feature domain within a NexusBlue project. It has c
 - A single component or utility
 - A page with a few API calls
 - A configuration change
+- A background scheduled task without UI (that's an Agent — see AGENT_STANDARD.md)
+- A wrapper around an external API (that's an Integration — see INTEGRATION_STANDARD.md)
+- A one-off utility script (that's a Script — see global CLAUDE.md Component Type Decision Framework)
 
 **A module IS:**
 - A domain with 3+ related database tables
@@ -548,3 +552,4 @@ A module is portable (can be lifted into another project) when:
 | 1.0 | 2026-02-28 | Initial standard — derived from WebMap + AppVault patterns |
 | 1.1 | 2026-02-28 | Added AI-first requirements, Monetization requirements (billing unit, usage table, admin tier control), Role Capability Matrix (module_permissions + module_defaults tables). Updated Required Files Checklist and Portability Checklist. |
 | 1.2 | 2026-02-28 | Clarified project type scope: `organization_id`, three-tier RLS template, and `{prefix}_usage.organization_id` are Platform Product requirements only — not applicable to Website / Standalone projects. Added reference to Platform Architecture Standard in global CLAUDE.md. |
+| 1.3 | 2026-03-01 | Added cross-references to AGENT_STANDARD.md and INTEGRATION_STANDARD.md. Updated "A module is NOT" section with explicit redirects to the correct standards for agents, integrations, and scripts. |
