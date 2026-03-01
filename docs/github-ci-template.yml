@@ -1,4 +1,4 @@
-# GitHub Actions CI/CD Template — NexusBlue v5.0
+# GitHub Actions CI/CD Template — NexusBlue v5.1
 #
 # USAGE: Copy to .github/workflows/ci.yml in each project.
 # Replace the three ENV values below. Set VERCEL_TOKEN + VERCEL_TEAM_ID as repo secrets.
@@ -145,3 +145,65 @@ jobs:
           TAG="release-$(date -u +%Y%m%d-%H%M%S)"
           git tag "$TAG"
           git push origin "$TAG"
+
+  # ─────────────────────────────────────────────
+  # Job 4: Docs Freshness Check (Safety Net)
+  # Runs on push to main. Advisory — warns if docs are stale.
+  # Primary enforcement is the local Claude Code hook.
+  # ─────────────────────────────────────────────
+  docs-freshness:
+    name: Docs Freshness
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check documentation freshness
+        run: |
+          WARNINGS=0
+
+          # Check 1: HANDOFF.md exists
+          if [ ! -f "HANDOFF.md" ]; then
+            echo "::warning::HANDOFF.md is missing — this project has no state document"
+            WARNINGS=$((WARNINGS + 1))
+          else
+            # Check 2: HANDOFF.md has been updated within the last 14 days
+            LAST_MODIFIED=$(git log -1 --format="%at" -- HANDOFF.md 2>/dev/null)
+            NOW=$(date +%s)
+            if [ -n "$LAST_MODIFIED" ]; then
+              AGE_DAYS=$(( (NOW - LAST_MODIFIED) / 86400 ))
+              if [ "$AGE_DAYS" -gt 14 ]; then
+                echo "::warning::HANDOFF.md last updated $AGE_DAYS days ago — may be stale"
+                WARNINGS=$((WARNINGS + 1))
+              else
+                echo "✓ HANDOFF.md updated $AGE_DAYS days ago"
+              fi
+            fi
+          fi
+
+          # Check 3: TODO.md exists (if HANDOFF.md exists)
+          if [ -f "HANDOFF.md" ] && [ ! -f "TODO.md" ]; then
+            echo "::warning::TODO.md is missing — human action items may be undocumented"
+            WARNINGS=$((WARNINGS + 1))
+          elif [ -f "TODO.md" ]; then
+            echo "✓ TODO.md exists"
+          fi
+
+          # Check 4: ARCHITECTURE.md exists (if project has src/)
+          if [ -d "src" ] && [ ! -f "ARCHITECTURE.md" ]; then
+            echo "::warning::ARCHITECTURE.md is missing — architecture decisions are undocumented"
+            WARNINGS=$((WARNINGS + 1))
+          elif [ -f "ARCHITECTURE.md" ]; then
+            echo "✓ ARCHITECTURE.md exists"
+          fi
+
+          # Summary
+          if [ "$WARNINGS" -gt 0 ]; then
+            echo ""
+            echo "⚠ $WARNINGS documentation warning(s) found"
+            echo "Run the docs enforcement agent to fix these gaps"
+          else
+            echo ""
+            echo "✓ All documentation checks passed"
+          fi

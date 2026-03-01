@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 5.5**
+**Version: 5.6**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -67,12 +67,12 @@ At the end of every session or when the user signals wrapping up:
 2. **Update TODO.md** — mark completed items done (with date), add any new human actions identified during the session, remove items that are no longer relevant.
 3. **Update MEMORY.md** if new stable patterns, gotchas, or conventions were discovered.
 4. **Update `project_library`** — if new features, tools, or integrations were shipped this session, INSERT a row into the project's `project_library` table via Supabase Management API. Category: `feature`, `tool`, `integration`, `architecture`, or `highlight`. Include title, summary (one line for card), content_md (markdown detail), and tags. Use `ON CONFLICT (title) DO NOTHING` for idempotency. Skip this step for projects without a Supabase database.
-5. **Run docs agent (MANDATORY GATE)** — invoke the documentation enforcement agent (see Agent Orchestration Standard) to verify all documents are current. Fix any gaps it finds. **This step MUST complete before step 6.** Do NOT commit and push until the docs agent returns PASS. If it returns GAPS FOUND, fix them, then re-run until PASS. The user should never have to ask "is everything documented?" — that means this gate was skipped.
-6. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions.
+5. **Run docs agent (MANDATORY GATE — enforced by hook)** — invoke the documentation enforcement agent (see Agent Orchestration Standard) to verify all documents are current. Fix any gaps it finds. **This step MUST complete before step 6.** After the docs agent returns PASS, run `touch .docs-verified` to unlock the push gate. If GAPS FOUND, fix them and re-run until PASS. The PreToolUse hook on `git push` will block if this step is skipped (see Docs Gate Hook section).
+6. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions. The `git push` will be blocked by the docs gate hook if `.docs-verified` is missing.
 7. **Deploy is automatic** — Vercel-hosted projects auto-deploy on push via GitHub integration. No manual deploy step needed. Only use `scripts/deploy.sh` as a fallback if auto-deploy fails.
 8. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
 
-> **IMPORTANT — Docs gate applies to ALL commits, not just session-end commits.** Any time you are about to push work to GitHub — whether mid-session or at session close — run the docs agent first. The pattern: finish work → run docs agent → fix gaps → commit all (code + docs) → push. Never push code without verified documentation. Root cause of this rule: session 8 of mcpc-website pushed two work commits without doc updates, requiring a third cleanup commit after the user caught it.
+> **IMPORTANT — Docs gate applies to ALL pushes, not just session-end.** Any time you `git push` — mid-session or at session close — the docs gate hook will block unless `.docs-verified` exists. The pattern: finish work → run docs agent → fix gaps → `touch .docs-verified` → commit → push. The hook deletes the flag after each push, so it must be re-created before the next push.
 
 ---
 
@@ -1568,6 +1568,65 @@ Return: PASS, or GAPS FOUND listing each missing/stale document with what needs 
 
 ---
 
+## Docs Gate Hook (Automated Enforcement)
+
+The docs agent is enforced by a **two-layer system** — a local Claude Code hook (primary) and a CI job (safety net).
+
+### Layer 1: Claude Code PreToolUse Hook
+
+A global hook at `~/.claude/hooks/docs-gate.sh` intercepts every `git push` command. It blocks the push unless a `.docs-verified` flag file exists in the project root.
+
+**How it works:**
+1. Hook fires on every `git push` via PreToolUse on Bash tool
+2. If the project has no `HANDOFF.md` → allowed (static/infra/template repo)
+3. If `.docs-verified` exists → allowed, flag consumed (deleted)
+4. Otherwise → **blocked with exit code 2**, message tells Claude to run docs agent
+
+**Workflow:**
+```
+finish work → run docs agent → PASS → touch .docs-verified → git commit → git push → allowed
+```
+
+**Configuration:** `~/.claude/settings.json`
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/nexusblue/.claude/hooks/docs-gate.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Rules:**
+- `.docs-verified` is single-use — the hook deletes it after each successful push
+- Must be re-created before each push (forces docs agent to run each time)
+- Add `.docs-verified` to project `.gitignore` files
+- Only enforced on projects with `HANDOFF.md` — templates, static PWAs, and infra repos are exempt
+- The hook finds the git root by walking up from CWD, so it works from any subdirectory
+
+### Layer 2: CI Docs Freshness Check
+
+A GitHub Actions job (`docs-freshness`) runs on every push to `main`. It checks:
+- `HANDOFF.md` exists and was updated within 14 days
+- `TODO.md` exists (if `HANDOFF.md` exists)
+- `ARCHITECTURE.md` exists (if `src/` exists)
+
+This is **advisory** (warnings, not blocking) — it catches drift that slipped past the hook. If warnings appear, fix them in the next session.
+
+**Template:** `docs/github-ci-template.yml` — Job 4: Docs Freshness Check
+
+---
+
 ## Testing & CI Standards
 
 ### Required for All JS/TS Projects
@@ -1704,6 +1763,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v5.3 — **Vercel deploy: GitHub auto-deploy is now the primary method.** Removed `deploy.sh` as a required post-push step — Vercel's GitHub integration auto-deploys reliably on every push to `main` (production) and `dev` (preview). `scripts/deploy.sh` retained in each project as a manual fallback only. Updated: Vercel deployment section (rewritten), Session End Protocol (step 6), Pre-Push Checklist (step 6), Preview Environments workflow. Root cause: running both GitHub auto-deploy AND `deploy.sh` after every push created duplicate deployments on Vercel — every commit was building twice, wasting build minutes
 - v5.4 — **Docs enforcement gate strengthened.** Session End Protocol step 5 upgraded to MANDATORY GATE — docs agent must return PASS before any commit+push, not just at session end. Added explicit rule: "The user should never have to ask 'is everything documented?' — that means this gate was skipped." Added callout that the gate applies to ALL pushes (mid-session and session-end), not just the final one. Root cause: mcpc-website session 8 pushed two work commits without running docs agent, requiring a third cleanup commit after the user caught the gap
 - v5.5 — **Component Type Decision Framework.** Added classification system for all new work: Module (heavy governance), Agent (medium), Integration (medium), Script (light), Service (medium), Microservice (heavy/future). Includes decision flowchart, promotion rules (Script→Agent→Module, Integration→Module, Module→Microservice), automatic classification behavior, and lightweight standards for Scripts and Services. Created companion documents: `docs/AGENT_STANDARD.md` v1.0 (route pattern, cron registration, logging, partial success, AI agent rules) and `docs/INTEGRATION_STANDARD.md` v1.0 (auth patterns, type isolation, caching, error handling, env var convention). Updated MODULE_STANDARD.md v1.3 with cross-references. Origin: user request 2026-03-01 — "I want to make sure that the system is ready to scale and can help decide the right path"
+- v5.6 — **Docs Gate Hook — automated enforcement.** Two-layer system replaces "please remember" prose: (1) Claude Code PreToolUse hook at `~/.claude/hooks/docs-gate.sh` blocks `git push` unless `.docs-verified` flag exists (created after docs agent returns PASS); (2) CI `docs-freshness` job in GitHub Actions warns on stale HANDOFF.md (>14 days), missing TODO.md, or missing ARCHITECTURE.md. Hook is global (all projects), skip-aware (only enforces on projects with HANDOFF.md), and single-use (flag consumed after each push). Updated Session End Protocol step 5 with hook workflow. Updated `github-ci-template.yml` to v5.1. Origin: user observed docs agent was consistently being skipped — "doc agent has been missing a lot"
 
 ---
 
