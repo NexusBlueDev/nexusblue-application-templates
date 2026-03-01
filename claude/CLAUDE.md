@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 5.3**
+**Version: 5.4**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -67,10 +67,12 @@ At the end of every session or when the user signals wrapping up:
 2. **Update TODO.md** — mark completed items done (with date), add any new human actions identified during the session, remove items that are no longer relevant.
 3. **Update MEMORY.md** if new stable patterns, gotchas, or conventions were discovered.
 4. **Update `project_library`** — if new features, tools, or integrations were shipped this session, INSERT a row into the project's `project_library` table via Supabase Management API. Category: `feature`, `tool`, `integration`, `architecture`, or `highlight`. Include title, summary (one line for card), content_md (markdown detail), and tags. Use `ON CONFLICT (title) DO NOTHING` for idempotency. Skip this step for projects without a Supabase database.
-5. **Run docs agent** — invoke the documentation enforcement agent (see Agent Orchestration Standard) to verify all documents are current. Fix any gaps before proceeding.
+5. **Run docs agent (MANDATORY GATE)** — invoke the documentation enforcement agent (see Agent Orchestration Standard) to verify all documents are current. Fix any gaps it finds. **This step MUST complete before step 6.** Do NOT commit and push until the docs agent returns PASS. If it returns GAPS FOUND, fix them, then re-run until PASS. The user should never have to ask "is everything documented?" — that means this gate was skipped.
 6. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions.
 7. **Deploy is automatic** — Vercel-hosted projects auto-deploy on push via GitHub integration. No manual deploy step needed. Only use `scripts/deploy.sh` as a fallback if auto-deploy fails.
 8. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
+
+> **IMPORTANT — Docs gate applies to ALL commits, not just session-end commits.** Any time you are about to push work to GitHub — whether mid-session or at session close — run the docs agent first. The pattern: finish work → run docs agent → fix gaps → commit all (code + docs) → push. Never push code without verified documentation. Root cause of this rule: session 8 of mcpc-website pushed two work commits without doc updates, requiring a third cleanup commit after the user caught it.
 
 ---
 
@@ -1612,6 +1614,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v5.0 — Added three architectural standards: (1) **Platform Architecture Standard** — defines Website/Standalone vs Platform Product project types; Platform Products get `organizations` table, `platform_role` column on profiles (`nexusblue_admin`), three-tier RLS pattern (service_role / nexusblue_admin / org-member), NexusBlue super-admin seed account, canonical RLS policy templates; (2) **Design System Standard** — canonical CSS token names and component class names enforced across all projects, font convention (Poppins/Oswald), shared library extraction threshold (3+ shared implementations triggers `@nexusblue/ui`); (3) **Agent Orchestration Standard** — three lifecycle gate agents (architect, security, qa) with structured invocation prompts, promotion rules, and HANDOFF.md documentation requirements; future agent roadmap (scale, migration, accessibility, i18n). Origin: mcpc-website session 2026-02-28
 - v5.2 — Added **documentation enforcement agent** (fourth orchestration agent). Runs automatically at session end before final commit+push. Checks: HANDOFF.md session entry freshness, TODO.md review, env var documentation, ARCHITECTURE.md currency, module docs, MEMORY.md updates, uncommitted changes. Added to Session End Protocol as mandatory step 4. Removed `.env.example` from standard files table, Document Freshness Rules, New Project Checklist, and Env Variable Setup Protocol — user preference is `.env.local` only (no committed example files). Updated Supabase deployment section with Management API pattern (IPv6-only DB hosts require `api.supabase.com/v1/projects/{ref}/database/query` instead of direct psql from Droplet). Origin: user request 2026-03-01 — "do we need a documentation agent to enforce this each time; as i am going to forget sometime"
 - v5.3 — **Vercel deploy: GitHub auto-deploy is now the primary method.** Removed `deploy.sh` as a required post-push step — Vercel's GitHub integration auto-deploys reliably on every push to `main` (production) and `dev` (preview). `scripts/deploy.sh` retained in each project as a manual fallback only. Updated: Vercel deployment section (rewritten), Session End Protocol (step 6), Pre-Push Checklist (step 6), Preview Environments workflow. Root cause: running both GitHub auto-deploy AND `deploy.sh` after every push created duplicate deployments on Vercel — every commit was building twice, wasting build minutes
+- v5.4 — **Docs enforcement gate strengthened.** Session End Protocol step 5 upgraded to MANDATORY GATE — docs agent must return PASS before any commit+push, not just at session end. Added explicit rule: "The user should never have to ask 'is everything documented?' — that means this gate was skipped." Added callout that the gate applies to ALL pushes (mid-session and session-end), not just the final one. Root cause: mcpc-website session 8 pushed two work commits without running docs agent, requiring a third cleanup commit after the user caught the gap
 
 ---
 
