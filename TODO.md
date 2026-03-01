@@ -1,6 +1,6 @@
 # TODO — NexusBlue Environment (Cross-Project)
 
-> Last updated: 2026-03-01 (Phase 0 DONE — all migrations applied)
+> Last updated: 2026-03-01 (Phase 2a DONE — super-admin portal DB + auth foundation)
 > These are actions required from the NexusBlue team or clients — NOT Claude tasks.
 > Project-specific TODOs live in each project's own TODO.md.
 > Items are ordered by dependency chain — earlier phases unblock later ones.
@@ -30,13 +30,13 @@
 > Depends on: Phase 0 (nexusblue-website migrations 031–033 applied).
 > Spec: `docs/NEXUSBLUE_SUPERADMIN_PLAN.md` v1.3
 
-### 2a. Database & Auth (build order steps 1–5)
+### 2a. Database & Auth (build order steps 1–5) — DONE 2026-03-01
 
-- [ ] **[Dev]** Write and apply **migration 038** — 9 `dev_*` tables + `dev_portal_config` + RLS + seed data.
-  Tables: dev_projects, dev_client_orgs, dev_modules, dev_agent_logs, dev_roadmap_items, dev_performance_snapshots, dev_ai_usage_summary, dev_llm_brief_overrides, dev_portal_config.
-- [ ] **[Dev]** Seed `bill@nexusblue.io` as super-admin — run updated seed script, set `platform_role = 'nexusblue_admin'`, set initial PIN hash in `dev_portal_config`.
+- [x] **[Dev]** Write and apply **migration 038** — 9 `dev_*` tables + RLS + seed data (11 projects, 6 modules, WrapOps org, portal PIN config) — done 2026-03-01
+- [x] **[Dev]** Seed `bill@nexusblue.io` as super-admin — `platform_role = 'nexusblue_admin'` set, PIN hash (6163) seeded in `dev_portal_config` — done 2026-03-01
+- [x] **[Dev]** Install `bcryptjs` + `@types/bcryptjs` for PIN verification — done 2026-03-01
 - [ ] **[Dev]** Update `src/middleware.ts` — add `/nexusblue` platform_role gate + portal cookie check + `/nexusblue/verify` PIN bypass.
-- [ ] **[Dev]** Build PIN verification flow — `/nexusblue/verify` page + `verifyPortalPin` server action + install `bcryptjs`.
+- [ ] **[Dev]** Build PIN verification flow — `/nexusblue/verify` page + `verifyPortalPin` server action.
 - [ ] **[Dev]** Add "NexusBlue Command" nav entry — visible only to `platform_role = 'nexusblue_admin'`.
 
 ### 2b. Layout & Hub (build order steps 6–7)
