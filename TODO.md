@@ -1,6 +1,6 @@
 # TODO — NexusBlue Environment (Cross-Project)
 
-> Last updated: 2026-03-01 (Phase 2 DONE — super-admin portal foundation live)
+> Last updated: 2026-03-01 (Phase 3 DONE — all 7 portal sections live)
 > These are actions required from the NexusBlue team or clients — NOT Claude tasks.
 > Project-specific TODOs live in each project's own TODO.md.
 > Items are ordered by dependency chain — earlier phases unblock later ones.
@@ -46,17 +46,15 @@
 
 ---
 
-## Phase 3 — Super-Admin Portal Sections
+## Phase 3 — Super-Admin Portal Sections — DONE 2026-03-01
 
-> Depends on: Phase 2 complete. Each section is independently useful — ship in order.
-
-- [ ] **[Dev]** **Environment section** (`/nexusblue/environment`) — Projects table, Tenants table, Agent Log feed, LLM Brief viewer + clipboard copy.
-- [ ] **[Dev]** **IP Registry** (`/nexusblue/ip`) — Project deep-dive cards, Module Library table, Documentation viewer (renders GitHub markdown).
-- [ ] **[Dev]** **Health section** (`/nexusblue/health`) — Vercel build status per project, Supabase health, Droplet health (RAM/disk/load), Agent schedule + status.
-- [ ] **[Dev]** **AI Monitor** (`/nexusblue/ai-monitor`) — Usage charts (MTD cost by project, tokens by model), Adherence checklist (scored per project), Feature performance.
-- [ ] **[Dev]** **Roadmap section** (`/nexusblue/roadmap`) — AI Suggestions feed (accept/dismiss/snooze), Backlog table (editable, sortable by project + priority).
-- [ ] **[Dev]** **Industry Benchmark** (`/nexusblue/industry`) — Core Web Vitals vs targets, NexusBlue methodology vs industry standard comparison.
-- [ ] **[Dev]** **Settings** (`/nexusblue/settings`) — Change Portal PIN (current PIN → new PIN → re-hash).
+- [x] **[Dev]** **Environment** — Projects table, Tenants table, Agent Log feed — done 2026-03-01
+- [x] **[Dev]** **IP Registry** — Project cards with stack pills, Module Library table — done 2026-03-01
+- [x] **[Dev]** **Health** — Droplet metrics, Vercel build status, Agent schedule — done 2026-03-01
+- [x] **[Dev]** **AI Monitor** — Usage by project (MTD), Adherence checklist — done 2026-03-01
+- [x] **[Dev]** **Roadmap** — Suggestions feed, Backlog table, Completed items — done 2026-03-01
+- [x] **[Dev]** **Industry Benchmark** — CWV targets, Methodology comparison — done 2026-03-01
+- [x] **[Dev]** **Settings** — Change Portal PIN — done 2026-03-01
 
 ---
 
