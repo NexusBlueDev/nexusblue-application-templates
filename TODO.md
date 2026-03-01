@@ -1,37 +1,18 @@
 # TODO — NexusBlue Environment (Cross-Project)
 
-> Last updated: 2026-03-01 (Phase 0 refined — 031+032 confirmed applied)
+> Last updated: 2026-03-01 (Phase 0 DONE — all migrations applied)
 > These are actions required from the NexusBlue team or clients — NOT Claude tasks.
 > Project-specific TODOs live in each project's own TODO.md.
 > Items are ordered by dependency chain — earlier phases unblock later ones.
 
 ---
 
-## Phase 0 — Blocking Prerequisites
+## Phase 0 — Blocking Prerequisites — DONE 2026-03-01
 
-> Nothing downstream can move until these are done.
-> **Requires:** `SUPABASE_DB_PASSWORD` in each project's `.env.local` — get from Supabase Dashboard → Project Settings → Database → Connection string.
-> **Apply script:** `./scripts/apply-migrations.sh <file> [file2 ...]` (uses psql via pooler)
-
-### nexusblue-website — AppVault migrations
-
-Migrations **031 + 032 already applied** (confirmed 2026-03-01 via REST API). Remaining:
-
-- [ ] **[Dev]** Add `SUPABASE_DB_PASSWORD` to **nexusblue-website** `.env.local`
-- [ ] **[Dev]** Apply migration **033** (AppVault RPC — `increment_av_usage` function)
-  `./scripts/apply-migrations.sh supabase/migrations/033_appvault_rpc.sql`
-- [ ] **[Dev]** Apply migrations **034–036** (consulting output types + buildspec + client gate)
-  `./scripts/apply-migrations.sh supabase/migrations/034_appvault_consulting.sql supabase/migrations/035_appvault_buildspec.sql supabase/migrations/036_appvault_client_gate.sql`
-- [ ] **[Dev]** Confirm migration **037** is clean (platform_role column exists but verify CHECK constraint)
-  Blocks: Super-admin portal (migration 038) cannot be applied until 033–037 are confirmed.
-
-### pw-app — Organizations table
-
-- [ ] **[Dev]** Add `SUPABASE_DB_PASSWORD` to **pw-app** `.env.local`
-- [ ] **[Dev]** Apply migration **012** (`organizations` table + multi-tenancy on profiles)
-  `./scripts/apply-migrations.sh supabase/migrations/012_organizations.sql`
-  Creates: organizations table, org_id + platform_role on profiles, seeds WrapOps as org #1, assigns all existing profiles to WrapOps.
-  Blocks: WrapOps multi-tenancy, org #1 assignment.
+- [x] **nexusblue-website**: Migrations 031–037 all confirmed applied (031+032 were already in place; 033–036 applied via Management API; 037 CHECK constraint verified) — done 2026-03-01
+- [x] **pw-app**: Migration 012 applied — organizations table, platform_role + organization_id on profiles, WrapOps seeded as org #1, all existing profiles assigned — done 2026-03-01
+- [x] `SUPABASE_ACCESS_TOKEN` added to all 5 Supabase projects for CLI/API access — done 2026-03-01
+- [x] `scripts/apply-migrations.sh` created (template + both projects) — done 2026-03-01
 
 ---
 

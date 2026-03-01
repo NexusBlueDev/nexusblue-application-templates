@@ -45,8 +45,8 @@ if [ -z "$PROJECT_REF" ]; then
   exit 1
 fi
 
-# Construct pooler connection string (transaction mode, port 6543)
-CONN_STRING="postgresql://postgres.${PROJECT_REF}:${DB_PASSWORD}@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
+# Construct direct connection string (bypasses pooler — needed for DDL/migrations)
+CONN_STRING="postgresql://postgres.${PROJECT_REF}:${DB_PASSWORD}@db.${PROJECT_REF}.supabase.co:5432/postgres"
 
 echo ""
 echo "Target: $SUPABASE_URL (ref: $PROJECT_REF)"
