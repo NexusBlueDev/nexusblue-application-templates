@@ -13,8 +13,8 @@
   Script: `supabase/migrations/012_organizations.sql` (to be created)
 
 - [ ] **[Dev]** Apply AppVault migrations **031 + 032 + 033** to **nexusblue-website**.
-  Required before building the `/nexusblue` super-admin portal (migration 037).
-  Migration numbering status: 034=appvault_consulting, 035 and 036 also confirmed taken (2026-02-28). Super-admin portal = **037**.
+  Required before building the `/nexusblue` super-admin portal (migration 038).
+  Migration numbering status: 034=appvault_consulting, 035, 036, and 037 also confirmed taken (2026-03-01). Super-admin portal = **038**.
 
 ---
 
