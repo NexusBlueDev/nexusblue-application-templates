@@ -2,9 +2,9 @@
 
 > **Purpose:** This document gives any external AI assistant (ChatGPT, Grok, Gemini, etc.)
 > enough context about NexusBlue's development environment, architecture, and standards
-> to contribute useful planning, design, and technical guidance.
+> to help **plan and design new projects, features, and integrations**.
 >
-> **Last updated:** 2026-02-28 (rev 2 — added super-admin portal, module standard, template docs)
+> **Last updated:** 2026-03-02 (rev 3 — added component classification, planning workflow, agent/integration standards)
 > **Maintained by:** NexusBlue Dev (nexusblue.ai)
 
 ---
@@ -29,89 +29,102 @@ Every project is built from this stack unless there's a documented reason to dev
 | Framework | Next.js 15 (App Router) + TypeScript |
 | Styling | Tailwind CSS v4 |
 | Database + Auth | Supabase (PostgreSQL + Auth + RLS + Realtime) |
-| Hosting | Vercel (REST API deploy from Droplet) |
+| Hosting | Vercel (auto-deploys via GitHub integration) |
 | CMS | Sanity.io (where content editing is needed) |
 | AI | Anthropic Claude API via Vercel AI SDK |
 | Payments | Stripe (Checkout, Webhooks, Customer Portal) |
 | Email | SendGrid |
 | Static apps | HTML5 + Vanilla JS (ES5) + GitHub Pages |
+| CI/CD | GitHub Actions (lint + typecheck + test on every push) |
+| Testing | Vitest (unit/integration) |
 
 **Node.js 22 LTS** is required for all JS/TS projects.
+
+**"Use What We Have" Rule:** Before recommending a new tool or service, check whether the existing stack already solves the problem. If yes, use it. Document why if you bring in something new.
 
 ---
 
 ## Project Type Taxonomy
 
-Every NexusBlue project is classified as one of these types. The type determines the database architecture, auth setup, and seed account structure.
+Every NexusBlue project is classified as one of these types. The type determines the database architecture, auth model, and seed account structure.
 
 ### 1. Platform Product
 **What it is:** A multi-tenant SaaS that NexusBlue builds and operates. Multiple client organizations use the same codebase. NexusBlue has a super-admin view across all orgs.
 
-**Examples:** pw-app (vehicle inspection SaaS — WrapOps is org #1), cnc-platform, pet_scheduler (scheduling SaaS), nexusblue-website
+**Examples:** pw-app (vehicle inspection SaaS), cnc-platform, pet_scheduler, nexusblue-website
 
 **Architecture requirements:**
 - `organizations` table — every tenant is a row
 - `organization_id UUID` on every data table
-- Three-tier Supabase RLS:
-  - `service_role` — full access (backend/migrations)
-  - `nexusblue_admin` — read across all orgs (platform oversight)
-  - Org member — read/write own org data only
-- `platform_role TEXT CHECK ('nexusblue_admin')` on `profiles` table
-- NexusBlue super-admin account: `nexusblue-admin@nexusblue.dev`
-- Dev test accounts: `test-[role]@[slug].dev / NxB_dev_2026!`
-
-**Roles (varies by product):** Typically `admin`, `employee`, `client`. Some products use `super_admin`, `owner`, `employee`, `client`.
+- Three-tier Supabase RLS: `service_role` (full) → `nexusblue_admin` (cross-org read) → org member (own org only)
+- `platform_role` column on `profiles` for NexusBlue super-admin access
+- Auth: Supabase Auth with role stored in `profiles.role` (authoritative) and synced to `user_metadata` (fast cache for middleware)
 
 ### 2. Website / Standalone
-**What it is:** A single-tenant web application or marketing website for one client. No multi-tenancy. Standard Supabase RLS (user owns their own data).
+**What it is:** A single-tenant web application or marketing website for one client. No multi-tenancy.
 
-**Examples:** mcpc-website (nonprofit prevention coalition), cain-website-022026 (tax firm)
+**Examples:** mcpc-website (nonprofit), cain-website-022026 (tax firm), sectorius-website
 
 **Architecture requirements:**
-- No `organizations` table
-- No `organization_id` on data tables
+- No `organizations` table, no `organization_id`
 - Standard RLS: users read/write their own records
-- Dev test accounts: `test-[role]@[slug].dev / NxB_dev_2026!`
+- Auth: same Supabase Auth pattern as Platform Products, minus multi-tenancy
 
 ### 3. Static PWA
 **What it is:** Pure client-side HTML5 app. No backend, no auth, no database. GitHub Pages hosted.
 
-**Examples:** nexusblue-junior-jarvis (AI career game for expo booths), nexusblue-junior-jarvis-career
+**Examples:** nexusblue-junior-jarvis (AI career game for expo booths)
 
-**Architecture requirements:** None. ES5 JavaScript, service worker, no build step.
+### 4. Infrastructure / Scripts
+**What it is:** Server configuration, DevOps tooling, automation pipelines.
 
-### 4. Infrastructure
-**What it is:** Server configuration, systemd services, nginx, DevOps tooling.
-
-**Examples:** nexusblue-servers
-
-### 5. Script / Pipeline
-**What it is:** Python scripts, data pipelines, automation tools.
-
-**Examples:** transcript-safety-pipeline (meeting transcript ingestion → pgvector → chat UI)
+**Examples:** nexusblue-servers (systemd/nginx), transcript-safety-pipeline (Python data pipeline)
 
 ---
 
-## Auth Architecture (Platform Products & Website/Standalone)
+## Component Classification — Classify Before You Build
 
-All projects with auth use the same pattern:
+Every new piece of work must be classified before implementation begins. The classification determines which standard governs it, how much structure is required, and what template to use.
 
-- **Login:** Next.js server actions + native HTML form POST (enables Chrome password manager)
-- **Session:** Supabase cookie-based sessions via `@supabase/ssr`
-- **Role storage:** Two sources of truth:
-  - `profiles.role` in PostgreSQL — authoritative
-  - `user_metadata.role` in Supabase Auth — fast cache for middleware
-  - Server actions sync DB → metadata on every login
-- **Middleware:** Reads `user_metadata.role` (no DB hit). Enforces route-level access.
-- **Input attributes required:** `autoComplete="email"` and `autoComplete="current-password"` on login forms for Chrome password manager compatibility
+### The Five Component Types
+
+| Type | What It Is | Governance | Standard |
+|------|-----------|------------|----------|
+| **Module** | Self-contained feature domain with DB tables, UI pages, API routes, feature gates | Heavy — docs before code, billing unit, role matrix | `MODULE_STANDARD.md` |
+| **Agent** | Scheduled/triggered background task that processes data and writes results | Medium — route pattern, logging, cron registration | `AGENT_STANDARD.md` |
+| **Integration** | Wrapper around an external API (auth + typed queries + error handling) | Medium — auth module, type isolation, env vars | `INTEGRATION_STANDARD.md` |
+| **Script** | One-off or on-demand utility (seed data, migrate, deploy) | Light — `scripts/` directory, clear header comment |
+| **Service** | Long-running background process (systemd unit on Droplet) | Medium — systemd unit, health check, log rotation |
+
+### Decision Flowchart
+
+Answer these questions in order:
+
+1. **Does it wrap an external API?** → **Integration** (e.g., Google PageSpeed, Stripe, SendGrid)
+2. **Does it run on a schedule or in response to an event (no UI)?** → **Agent** (e.g., weekly performance snapshots, email queue processing)
+3. **Does it have its own DB tables, UI pages, AND feature gates?** → **Module** (e.g., AppVault, WebMap, billing)
+4. **Is it a one-off utility or operational task?** → **Script** (e.g., seed-accounts.sh, deploy.sh)
+5. **Does it run continuously as a background process?** → **Service** (e.g., WebSocket server, queue worker)
+
+### Promotion Rules
+
+Components naturally grow. When they cross a threshold, promote them:
+
+| From → To | Trigger |
+|-----------|---------|
+| Script → Agent | Needs a schedule, logging, or error tracking |
+| Agent → Module | Needs UI pages, feature gates, billing metering, or 3+ dedicated DB tables |
+| Integration → Module | Needs its own DB tables, UI pages, or feature gates |
+
+**When promoting, follow the target standard's checklist from scratch.** Don't skip steps because "it was working before."
 
 ---
 
-## Module Standard (Platform Products)
+## Module Standard (Summary)
 
-Platform Products that offer gated features follow a module standard:
+Modules are the heaviest governance tier. Full standard: `MODULE_STANDARD.md` v1.3.
 
-Every feature module has four database components:
+**Core pattern:** Every module has four database components:
 
 | Table | Purpose |
 |-------|---------|
@@ -120,12 +133,93 @@ Every feature module has four database components:
 | `{prefix}_feature_overrides` | Per-org config overrides on top of defaults |
 | `{prefix}_usage` | Billing metering (tracks consumption per org) |
 
-**AI-first rule:** Every module that touches AI must log to `{prefix}_usage` with `tokens_used`, `cost_usd`, and `model_used` columns. This enables per-org billing.
+**Key rules:**
+- **Structure before code** — `docs/modules/{module}/` with README, ARCHITECTURE, SCHEMA must exist before any implementation
+- **Billing unit defined before migration** — what gets counted per org per billing period
+- **Role capability matrix** — which roles can do what, declared in README, enforced in API routes
+- **AI-first** — AI does the work, humans approve outcomes. Streaming is default for user-facing calls
+- **Three commercial modes:** Embedded (in NexusBlue subscription), Managed Product (NexusBlue operates), Standalone App (client owns)
 
-**Module permission check pattern:**
-```
-org setting → platform default → deny
-```
+**Module lifecycle:** PLANNING → FOUNDATION → BUILDING → ADMIN → LIVE → EXPANDED → MAINTAINED
+
+**Template:** Use `NEW_MODULE_PROMPT.md` when adding a module to an existing project.
+
+---
+
+## Agent Standard (Summary)
+
+Agents are background automation tasks. Full standard: `AGENT_STANDARD.md` v1.0.
+
+**Core pattern:** Cron route at `src/app/api/cron/{agent-name}/route.ts`, registered in `vercel.json`.
+
+**Key rules:**
+- Auth via `verifyCronSecret(request)` — never unauthenticated
+- Partial success pattern — process all items, track errors, never abort the batch for one failure
+- Log every run to a structured table (agent_type, result, summary, details)
+- Result codes: `pass` / `issues_found` / `error`
+- AI-powered agents registered in `src/lib/agents/registry.ts`
+- Model rule: Sonnet for generation, Haiku for judgment, code for deterministic
+
+**Template:** Use `NEW_AGENT_PROMPT.md` when adding a background agent.
+
+---
+
+## Integration Standard (Summary)
+
+Integrations wrap external APIs. Full standard: `INTEGRATION_STANDARD.md` v1.0.
+
+**Core pattern:** Auth module at `src/lib/{provider}/auth.ts`, typed queries per resource, types at `src/types/{provider}.ts`.
+
+**Key rules:**
+- Cache client instances (serverless reuses processes)
+- Type isolation — map external shapes to internal types at the boundary. If you swap providers, only the integration lib changes
+- Graceful degradation — integrations never crash the calling feature. Return typed errors
+- Webhook verification mandatory (Stripe, GitHub, etc.)
+- Rate limit awareness — document limits, add caching or queuing as needed
+
+**No template needed** — integrations are lightweight enough that the standard itself serves as the guide.
+
+---
+
+## Planning Workflow — How to Design New Work
+
+When an external AI is helping NexusBlue plan new work, follow this sequence:
+
+### Step 1: Classify Every Piece of Work
+
+Before designing anything, run each feature/capability through the decision flowchart above. State the classification explicitly: "This is a **Module** (has its own DB tables, UI, and feature gates)" or "This is an **Integration** (wraps the Stripe API)."
+
+### Step 2: Pick the Right Template
+
+| Work Type | Template to Use |
+|-----------|----------------|
+| Brand new project | `NEW_PROJECT_PROMPT.md` |
+| New module in existing project | `NEW_MODULE_PROMPT.md` |
+| New background agent | `NEW_AGENT_PROMPT.md` |
+| New external API integration | Follow `INTEGRATION_STANDARD.md` directly |
+| New utility script | Follow Script conventions in global CLAUDE.md |
+
+### Step 3: Design Within the Standard
+
+Each standard defines:
+- Required directory structure
+- Required documentation (before code for Modules)
+- Database conventions (naming, RLS, JSONB)
+- Checklist to verify before shipping
+
+### Step 4: Check for Promotion
+
+If during design you realize a component crosses a governance boundary (e.g., "this Agent needs its own UI pages"), flag it and promote to the correct type before building.
+
+### Key Design Principles
+
+- **Modules need docs before code.** README + ARCHITECTURE + SCHEMA before any implementation
+- **Every data table in Platform Products has `organization_id`.** No exceptions
+- **AI usage is always logged.** Tokens, cost, model — per org, per billing period
+- **Feature gates are registered in migrations**, not hardcoded in UI
+- **Streams for user-facing AI.** Never make users wait for a complete response
+- **Wrap AI streams in custom ReadableStream.** Never use `toTextStreamResponse()` — it leaks API errors mid-stream
+- **PWA service workers need auth route exclusions.** `NetworkOnly` rules before default cache
 
 ---
 
@@ -136,37 +230,31 @@ All web projects use CSS custom properties with these canonical token names (val
 ```css
 /* Brand */
 --brand-primary        /* Main brand color */
---brand-secondary      /* Secondary accent */
---brand-accent         /* Tertiary / highlight */
+--brand-primary-hover  /* Hover state */
+--brand-accent         /* Secondary accent */
 
 /* Surfaces */
 --surface-primary      /* Page background */
 --surface-secondary    /* Card / panel background */
---surface-tertiary     /* Subtle inset / input background */
 
 /* Text */
 --text-primary         /* Body text */
 --text-secondary       /* Muted / supporting text */
 --text-muted           /* Placeholder / disabled */
---text-on-brand        /* Text on brand-colored backgrounds */
+--text-on-primary      /* Text on brand-colored backgrounds */
 
-/* Borders & UI */
+/* Borders & Radius */
 --border-default       /* Standard borders */
---border-subtle        /* Hairline / de-emphasized borders */
 --radius-sm / --radius-md / --radius-lg
-
-/* Feedback */
---success / --warning / --error / --info
 ```
 
 **Reserved component class names** (defined in `globals.css`, consistent across projects):
-- `.btn-primary` `.btn-secondary` `.btn-ghost` `.btn-danger` — buttons
+- `.btn-primary` `.btn-secondary` `.btn-accent` — buttons
 - `.input` `.input-field` — form inputs
-- `.card` `.card-header` `.card-body` — card containers
-- `.badge` `.badge-success` `.badge-warning` `.badge-error` — status badges
-- `.page-container` `.content-grid` — layout wrappers
+- `.page-container` — centered max-width layout wrapper
+- `.card-hover` — hover lift effect
 
-**Font convention:** Poppins (body) + Oswald (headings) via Google Fonts / `next/font/google`
+**Font convention:** Poppins (body) + Oswald (headings, uppercase) via `next/font/google`
 
 ---
 
@@ -174,14 +262,14 @@ All web projects use CSS custom properties with these canonical token names (val
 
 | Project | Type | Client / Purpose | Stack notes |
 |---------|------|-----------------|------------|
-| pw-app | Platform Product | Vehicle inspection SaaS — WrapOps is org #1 | Next.js 15, PWA, offline queue, PDF reports |
-| cnc-platform | Platform Product | CNC workshop guided workflows | Next.js 15, Sanity CMS |
-| pet_scheduler | Platform Product | General scheduling SaaS | Next.js 14, 4-role system, Google + MS Calendar OAuth |
-| nexusblue-website | Platform Product | NexusBlue company platform | Next.js 15, Stripe, Sanity |
-| mcpc-website | Website / Standalone | Montgomery County Prevention Coalition | Next.js 16, no CMS |
-| cain-website-022026 | Website / Standalone | Cain Tax Advisors | Next.js 15, Sanity, Retell AI |
+| pw-app | Platform Product | Vehicle inspection SaaS — WrapOps is org #1 | PWA, offline queue, PDF reports |
+| cnc-platform | Platform Product | CNC workshop guided workflows | Sanity CMS |
+| pet_scheduler | Platform Product | General scheduling SaaS | 4-role system, Google + MS Calendar OAuth |
+| nexusblue-website | Platform Product | NexusBlue company platform | Stripe, Sanity, super-admin portal |
+| mcpc-website | Website / Standalone | Montgomery County Prevention Coalition | No CMS |
+| cain-website-022026 | Website / Standalone | Cain Tax Advisors | Sanity, Retell AI |
+| sectorius-website | Website / Standalone | Sectorius | — |
 | nexusblue-junior-jarvis | Static PWA | AI job guessing game (expo booth) | HTML5 / ES5, GitHub Pages |
-| nexusblue-junior-jarvis-career | Static PWA | AI career discovery tool (expo booth) | HTML5 / ES5, GitHub Pages |
 | nexusblue-servers | Infrastructure | DigitalOcean Droplet management | Ubuntu, systemd, nginx |
 
 ---
@@ -189,77 +277,40 @@ All web projects use CSS custom properties with these canonical token names (val
 ## Key Architectural Decisions
 
 **Why Supabase over custom auth?**
-Built-in auth, RLS at the database level, pgvector for AI embeddings, realtime subscriptions, and storage — all in one managed service. Avoids building and maintaining an auth layer.
+Built-in auth, RLS at the database level, pgvector for AI embeddings, realtime subscriptions, and storage — all in one managed service.
 
 **Why Vercel over DigitalOcean for frontends?**
-Preview URLs per branch, automatic SSL, edge functions, and zero-config Next.js deploys. DigitalOcean runs background services and the dev environment.
+Preview URLs per branch, automatic SSL, edge functions, zero-config Next.js deploys. DigitalOcean runs background services and the dev environment.
 
 **Why Next.js App Router?**
-Server components reduce client bundle size. Server actions eliminate boilerplate API routes for form handling. Native streaming support for AI chat.
+Server components reduce client bundle size. Server actions eliminate boilerplate API routes for form handling. Native streaming for AI chat.
 
-**Why Tailwind v4 with CSS custom properties?**
-v4's `@layer` system requires care (see below), but CSS variables allow per-project theming while keeping class names consistent across projects.
-
-**Critical Tailwind v4 gotcha:**
-Any CSS reset (`*, *::before, *::after { margin: 0; padding: 0 }`) outside `@layer base {}` silently overrides all Tailwind utilities in production webpack builds. All element-selector overrides must be inside `@layer base {}`.
-
----
-
-## NexusBlue Super-Admin Portal (`/nexusblue`)
-
-The **nexusblue-website** project includes a platform-level super-admin command center accessible only to users with `platform_role = 'nexusblue_admin'`. This is the "Tony Stark / JARVIS" interface — NexusBlue leadership manages the entire platform from here.
-
-**Route:** `/nexusblue` (separate from the regular `/admin` route)
-**Access control:** `platform_role = 'nexusblue_admin'` in `profiles` table — NOT regular `admin` role
-
-**Seven sections planned:**
-
-| Section | Purpose |
-|---------|---------|
-| **Hub** | Dashboard — project health, recent activity, agent run log |
-| **Environment** | Live status of all projects (git state, last deploy, Vercel status, Droplet metrics) |
-| **IP Registry** | All NexusBlue modules — what they are, status, architecture docs, reuse potential |
-| **AI Monitor** | AI usage across all projects — tokens, cost, model distribution, trend vs. industry |
-| **Industry Benchmark** | AI-first scoring — how our implementations compare to best practices; improvement suggestions |
-| **Roadmap** | Active roadmap tracker — priorities, status, next actions |
-| **Platform Health** | Cross-project performance, error rates, deployment success rate |
-
-**Agents powering this portal:**
-- **Architect agent** — Planning → Building phase transitions; migration conflict detection
-- **Security agent** — Routes → Main safety review; auth and RLS audit
-- **QA agent** — Admin → Live certification; pre-deploy checks
-- **Roadmap agent** — Post-cycle retrospective; priority recommendations
-- **Performance agent** — Weekly cross-project performance benchmarks
-
-**Database:** Eight `dev_` prefixed tables (migration 034+) in nexusblue-website Supabase project.
-**Status:** Planned — builds after AppVault migrations 031+032+033 are applied.
-
-Full spec: `docs/NEXUSBLUE_SUPERADMIN_PLAN.md`
+**Why Tailwind v4?**
+CSS variables allow per-project theming while keeping class names consistent. Note: all element-selector overrides must be inside `@layer base {}` — unlayered resets silently break all utilities in production.
 
 ---
 
 ## Template Documents Available
 
-For consistent project setup, these prompt templates live in `nexusblue-application-templates/docs/`:
+For consistent project setup, these templates live in `nexusblue-application-templates/docs/`:
 
-| Document | Purpose |
-|----------|---------|
-| `NEW_PROJECT_PROMPT.md` | Copy-paste Claude Code prompt for starting any new NexusBlue project |
-| `NEW_MODULE_PROMPT.md` | Copy-paste Claude Code prompt for adding a module to an existing Platform Product |
-| `MODULE_STANDARD.md` | Full v1.2 module standard — directory contract, naming, DB conventions, AI rules, monetization |
-| `NEXUSBLUE_SUPERADMIN_PLAN.md` | Full spec for the `/nexusblue` platform command center |
-| `EXTERNAL_LLM_BRIEF.md` | This document — share with any external AI to give NexusBlue context |
+| Document | When to Use | Purpose |
+|----------|------------|---------|
+| `NEW_PROJECT_PROMPT.md` | Starting a brand new project | Copy-paste Claude Code prompt — scaffolds project with all standards |
+| `NEW_MODULE_PROMPT.md` | Adding a feature module to an existing project | Copy-paste Claude Code prompt — creates docs-first, then schema, then code |
+| `NEW_AGENT_PROMPT.md` | Adding a background cron/event agent | Copy-paste Claude Code prompt — creates route, cron registration, logging |
+| `MODULE_STANDARD.md` v1.3 | Reference during module development | Full directory contract, naming, DB conventions, AI rules, monetization |
+| `AGENT_STANDARD.md` v1.0 | Reference during agent development | Route pattern, cron registration, logging, error handling |
+| `INTEGRATION_STANDARD.md` v1.0 | Reference during integration development | Auth patterns, type isolation, caching, error handling |
+| `EXTERNAL_LLM_BRIEF.md` | Sharing context with any external AI | This document |
 
 ---
 
-## What to Know When Planning New Work
+## Active Prefixes & Slugs (Do Not Reuse)
 
-1. **New Platform Product?** → organizations table, three-tier RLS, NexusBlue super-admin, module standard for gated features
-2. **New Website/Standalone?** → standard Supabase RLS, no multi-tenancy, seed NexusBlue dev accounts
-3. **New feature module?** → four-table module pattern (permissions, defaults, overrides, usage)
-4. **Adding AI?** → log to `_usage` table with tokens/cost/model. Use `claude-sonnet-4-6` for quality, `claude-haiku-4-5` for speed. Wrap streams in custom ReadableStream (never `toTextStreamResponse()` for user-facing chat — it leaks API errors mid-stream)
-5. **Adding payments?** → Stripe Checkout + Webhook + Customer Portal pattern. Never store payment data in Supabase
-6. **PWA needed?** → Serwist for service worker. Add `NetworkOnly` rules for auth routes, server actions, and API routes BEFORE `defaultCache`. Set `cacheOnNavigation: false`
+**Project slugs:** `mcpc`, `cain`, `cnc`, `pw`, `nexusblue`, `scheduler`, `sectorius`
+
+**Module table prefixes:** `webmap_` (WebMap), `av_` (AppVault), `dev_` (Super-Admin Portal)
 
 ---
 
@@ -268,5 +319,6 @@ For consistent project setup, these prompt templates live in `nexusblue-applicat
 - No React Native / mobile apps (web PWA instead)
 - No custom auth implementations (Supabase Auth only)
 - No hardcoded secrets (`.env.local` only, gitignored)
-- No `vercel deploy` CLI (deploys bypass GitHub — code loss risk). Always deploy via REST API
+- No `vercel deploy` CLI (bypasses GitHub — code loss risk). Deploy via GitHub auto-deploy
 - No introducing new tools/services without checking if the existing stack covers it
+- No code without classification — every piece of work is classified before building

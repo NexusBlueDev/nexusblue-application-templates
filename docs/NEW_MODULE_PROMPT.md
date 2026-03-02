@@ -1,7 +1,7 @@
 # New Module Starter Prompt
 
 > **Usage:** Copy the prompt below and paste it as your first message when adding a new
-> module to an existing NexusBlue Platform Product. It enforces all v5.0 module standards
+> module to an existing NexusBlue Platform Product. It enforces all v5.6 module standards
 > from the first message.
 >
 > Replace `[MODULE_NAME]`, `[PREFIX]`, `[PROJECT_NAME]`, and bracketed sections before pasting.
@@ -13,7 +13,7 @@
 
 ```
 We are adding a new module to an existing NexusBlue project. Follow the global CLAUDE.md
-v5.0 standards and MODULE_STANDARD.md v1.2 exactly. Here is the module brief:
+v5.6 standards and MODULE_STANDARD.md v1.3 exactly. Here is the module brief:
 
 Project:     [PROJECT_NAME]  (e.g., nexusblue-website)
 Module name: [MODULE_NAME]   (e.g., "Client Reports", "AI Chat", "Billing")
@@ -66,22 +66,31 @@ Before writing any code, do the following in order:
 
 4. Show me the planning docs for review before proceeding.
 
-5. Once approved, create:
+5. Run architect review agent against the planning docs:
+   - Every table has organization_id (Platform Products only)
+   - RLS policies cover all 3 tiers
+   - {prefix}_usage table present for billing metering
+   - module_defaults seed rows included in migration
+   - No N+1 query risks in data access patterns
+   - Migration is additive-only (no DROP, no destructive ALTER)
+   Must PASS before proceeding to schema work.
+
+6. Once approved, create:
    - src/types/[module-name].ts
    - supabase/migrations/0NN_[prefix]_core.sql
      (tables: [prefix]_module_permissions, [prefix]_module_defaults,
               [prefix]_feature_overrides, [prefix]_usage, plus domain tables)
    - Show me this SQL and confirm before writing to a file
 
-6. After migration is confirmed, scaffold:
+7. After migration is confirmed, scaffold:
    - src/lib/[module-name]/ (core library)
    - src/app/api/[module-name]/ (API routes)
    - src/app/(admin)/admin/[module-name]/ (admin UI)
    - src/components/[module-name]/ (module components)
 
-7. Register feature gates in the migration (INSERT INTO public.features).
+8. Register feature gates in the migration (INSERT INTO public.features).
 
-8. Update HANDOFF.md with the new module section.
+9. Update HANDOFF.md with the new module section.
 
 After planning docs are done, declare your understanding of the module in 3–5 lines
 and confirm all planning items above are done before starting schema work.
@@ -106,6 +115,7 @@ and confirm all planning items above are done before starting schema work.
 - [ ] `src/types/[module].ts` created
 - [ ] Billing unit defined (Platform Products)
 - [ ] Role capability matrix defined
+- [ ] Architect review PASS
 
 ### AI Modules additionally need:
 - [ ] `docs/modules/[module]/AGENTS.md` created
@@ -129,6 +139,7 @@ and confirm all planning items above are done before starting schema work.
 - [ ] Role capability matrix enforced in all API routes
 - [ ] Usage metering live (increments on every billable action)
 - [ ] Feature gates checked at every API route entry point
+- [ ] Security review PASS on all API routes
 - [ ] HANDOFF.md updated with module section
 - [ ] Module README current and accurate
 
@@ -169,6 +180,6 @@ docs/modules/{module}/
 |--------|--------|---------|
 | `webmap_` | WebMap | nexusblue-website |
 | `av_` | AppVault | nexusblue-website |
-| `dev_` | Super-Admin Portal | nexusblue-website (planned, migration 034+) |
+| `dev_` | Super-Admin Portal | nexusblue-website |
 
 > Full MODULE_STANDARD: `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md`
