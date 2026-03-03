@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 5.6**
+**Version: 5.7**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -67,6 +67,7 @@ At the end of every session or when the user signals wrapping up:
 2. **Update TODO.md** — mark completed items done (with date), add any new human actions identified during the session, remove items that are no longer relevant.
 3. **Update MEMORY.md** if new stable patterns, gotchas, or conventions were discovered.
 4. **Update `project_library`** — if new features, tools, or integrations were shipped this session, INSERT a row into the project's `project_library` table via Supabase Management API. Category: `feature`, `tool`, `integration`, `architecture`, or `highlight`. Include title, summary (one line for card), content_md (markdown detail), and tags. Use `ON CONFLICT (title) DO NOTHING` for idempotency. Skip this step for projects without a Supabase database.
+4b. **Verify Command Center registration** — if this is the first session for a new project, INSERT into the central `dev_projects` table so it appears on the Environment page. See Command Center Registration section. If the project is already registered, update `live_url`/`preview_url`/`status` if they changed this session.
 5. **Run docs agent (MANDATORY GATE — enforced by hook)** — invoke the documentation enforcement agent (see Agent Orchestration Standard) to verify all documents are current. Fix any gaps it finds. **This step MUST complete before step 6.** After the docs agent returns PASS, run `touch .docs-verified` to unlock the push gate. If GAPS FOUND, fix them and re-run until PASS. The PreToolUse hook on `git push` will block if this step is skipped (see Docs Gate Hook section).
 6. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions. The `git push` will be blocked by the docs gate hook if `.docs-verified` is missing.
 7. **Deploy is automatic** — Vercel-hosted projects auto-deploy on push via GitHub integration. No manual deploy step needed. Only use `scripts/deploy.sh` as a fallback if auto-deploy fails.
@@ -233,6 +234,58 @@ Every new project must have these before the first real commit:
 - [ ] `package.json` engines field — `"engines": { "node": ">=22.0.0" }` (JS/TS projects only)
 - [ ] `.gitignore` — at minimum: `.env`, `*.env`, `.env.local`, `node_modules/`, `__pycache__/`, `.DS_Store`, `NUL`, `Thumbs.db`, `desktop.ini`
 - [ ] `.vscode/settings.json` — `{"chat.useClaudeHooks": true}` to enable Claude Code hooks
+- [ ] **Register in Command Center `dev_projects` table** — INSERT a row into the nexusblue-website Supabase `dev_projects` table so the project appears on the Environment page. See Command Center Registration section below.
+
+---
+
+## Command Center Registration (All Projects)
+
+Every NexusBlue project must be registered in the central `dev_projects` table (nexusblue-website Supabase) so it appears on the Command Center Environment page at `nexusblue.io/nexusblue/environment`.
+
+**When:** At project creation (New Project Checklist) or the first session of an existing project that isn't yet registered.
+
+**Table:** `dev_projects` in `https://lbmxueowhpecoqlyhdcs.supabase.co`
+
+**Insert via REST API:**
+```bash
+curl -s -X POST "https://lbmxueowhpecoqlyhdcs.supabase.co/rest/v1/dev_projects" \
+  -H "apikey: SERVICE_ROLE_KEY" \
+  -H "Authorization: Bearer SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Prefer: return=representation" \
+  -d '{
+    "name": "Project Display Name",
+    "slug": "repo-name",
+    "project_type": "platform_product|website_standalone|static_pwa|infrastructure|script_pipeline",
+    "client_name": "Client Name or null",
+    "description": "One-line description",
+    "live_url": "https://production-url.com",
+    "preview_url": "https://preview.nexusblue.ai or null",
+    "github_repo": "https://github.com/NexusBlueDev/repo-name",
+    "supabase_project_ref": "ref or null",
+    "vercel_project_name": "vercel-project-name or null",
+    "stack_summary": ["Tech1", "Tech2"],
+    "status": "active",
+    "has_seed_script": false,
+    "sort_order": 0
+  }'
+```
+
+**Service role key** for nexusblue-website is in `/home/nexusblue/dev/nexusblue-website/.env.local` as `SUPABASE_SERVICE_ROLE_KEY`.
+
+**Project type mapping:**
+| Type | When to use |
+|------|-------------|
+| `platform_product` | Multi-tenant SaaS with organizations table |
+| `website_standalone` | Single-tenant client website |
+| `static_pwa` | Static HTML/JS app with PWA support, no build step |
+| `infrastructure` | Servers, DevOps, internal tooling repos |
+| `script_pipeline` | Data pipelines, one-off processing scripts |
+
+**Rules:**
+- Use `ON CONFLICT (slug) DO NOTHING` for idempotency when inserting
+- Update `live_url` and `preview_url` when domains change
+- Set `status` to `archived` when a project is retired (never delete rows)
 
 ---
 
@@ -954,6 +1007,63 @@ export async function middleware(request: NextRequest) {
 ```
 
 **Rule:** When setting up auth middleware with a catch-all matcher, always include a file extension bypass for common static file types. This prevents Google Search Console verification files, SEO files (`sitemap.xml`, `robots.txt`), and downloadable assets from being blocked by auth. Found 2026-02-26 during Google Search Console setup — verification file was 307 redirecting to login.
+
+---
+
+### Next.js + Supabase Auth — Never Call getUser() in Server Component Layouts (CRITICAL)
+
+**Symptom:** Admin login page (or any auth-gated page) shows a loading spinner indefinitely. Works in incognito but not in a normal browser. Affects all users, all browsers.
+
+**Root cause:** An async Server Component layout calls `await supabase.auth.getUser()` on every request, including public pages like login. When Supabase needs to refresh expired tokens, it calls the `setAll` cookie callback — but **Server Components cannot write cookies**. The call hangs indefinitely. Incognito has no cookies, so `getUser()` returns `null` instantly (no refresh needed).
+
+**Fix — move ALL auth logic to middleware, pass result via request header:**
+
+```typescript
+// middleware.ts
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  const isAuthPage = pathname.startsWith('/admin/login') || pathname.startsWith('/admin/set-password')
+  const hasAuthCookie = request.cookies.getAll().some(c => c.name.startsWith('sb-'))
+
+  // No cookies: fast path (skip Supabase call entirely)
+  if (!hasAuthCookie) {
+    if (isAuthPage) return NextResponse.next()
+    return NextResponse.redirect(new URL('/admin/login', request.url))
+  }
+
+  // Has cookies: refresh session in middleware (CAN write cookies)
+  const refreshedCookies: Array<{ name: string; value: string; options: Record<string, unknown> }> = []
+  const supabase = createServerClient(/* ... cookies: { setAll(c) { refreshedCookies.push(...c) } } */)
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Auth pages: pass through (redirect to /admin if already authenticated)
+  if (isAuthPage) { /* return response with refreshed cookies */ }
+  if (!user) { /* redirect to login */ }
+
+  // Set request header so layout knows user is authenticated
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-admin-authenticated', 'true')
+  const response = NextResponse.next({ request: { headers: requestHeaders } })
+  // Apply refreshed cookies to response
+  return response
+}
+
+// admin/layout.tsx — NO Supabase calls, just reads header
+export default async function AdminLayout({ children }) {
+  const headersList = await headers()
+  const isAuthenticated = headersList.get('x-admin-authenticated') === 'true'
+  if (!isAuthenticated) return <>{children}</>
+  return /* sidebar + children */
+}
+```
+
+**Rules:**
+- NEVER call `getUser()`, `getSession()`, or any Supabase auth method in a Server Component layout — they hang when token refresh is needed
+- Middleware is the ONLY place that should call `getUser()` — it CAN write refreshed cookies via `response.cookies.set()`
+- Pass auth state from middleware to layouts via custom request headers (`NextResponse.next({ request: { headers } })`)
+- Add cookie pre-check (`request.cookies.getAll().some(c => c.name.startsWith('sb-'))`) to skip Supabase calls entirely when no session exists — instant response for unauthenticated users
+- `useSearchParams()` in client components MUST be wrapped in `<Suspense>` — without it, the component suspends and falls through to the nearest loading boundary
+- Found 2026-03-02 on cain-website — admin login page hung for all users. Three attempted fixes before identifying the root cause: Suspense boundary (partial), cookie pre-check in layout (not sufficient), middleware-only auth (correct fix)
 
 ---
 
@@ -1764,6 +1874,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v5.4 — **Docs enforcement gate strengthened.** Session End Protocol step 5 upgraded to MANDATORY GATE — docs agent must return PASS before any commit+push, not just at session end. Added explicit rule: "The user should never have to ask 'is everything documented?' — that means this gate was skipped." Added callout that the gate applies to ALL pushes (mid-session and session-end), not just the final one. Root cause: mcpc-website session 8 pushed two work commits without running docs agent, requiring a third cleanup commit after the user caught the gap
 - v5.5 — **Component Type Decision Framework.** Added classification system for all new work: Module (heavy governance), Agent (medium), Integration (medium), Script (light), Service (medium), Microservice (heavy/future). Includes decision flowchart, promotion rules (Script→Agent→Module, Integration→Module, Module→Microservice), automatic classification behavior, and lightweight standards for Scripts and Services. Created companion documents: `docs/AGENT_STANDARD.md` v1.0 (route pattern, cron registration, logging, partial success, AI agent rules) and `docs/INTEGRATION_STANDARD.md` v1.0 (auth patterns, type isolation, caching, error handling, env var convention). Updated MODULE_STANDARD.md v1.3 with cross-references. Origin: user request 2026-03-01 — "I want to make sure that the system is ready to scale and can help decide the right path"
 - v5.6 — **Docs Gate Hook — automated enforcement.** Two-layer system replaces "please remember" prose: (1) Claude Code PreToolUse hook at `~/.claude/hooks/docs-gate.sh` blocks `git push` unless `.docs-verified` flag exists (created after docs agent returns PASS); (2) CI `docs-freshness` job in GitHub Actions warns on stale HANDOFF.md (>14 days), missing TODO.md, or missing ARCHITECTURE.md. Hook is global (all projects), skip-aware (only enforces on projects with HANDOFF.md), and single-use (flag consumed after each push). Updated Session End Protocol step 5 with hook workflow. Updated `github-ci-template.yml` to v5.1. Origin: user observed docs agent was consistently being skipped — "doc agent has been missing a lot"
+- v5.7 — **Never call getUser() in Server Component layouts** (CRITICAL gotcha). Server Components cannot write cookies, so when Supabase needs to refresh expired tokens the `setAll` callback fails and the call hangs indefinitely — showing a loading spinner for all users. Fix: move ALL auth to middleware (which CAN write cookies), pass auth state to layout via `x-admin-authenticated` request header, add cookie pre-check to skip Supabase calls when no session exists. Also: `useSearchParams()` in client components must always be wrapped in `<Suspense>`. Origin: cain-website 2026-03-02 — admin login page hung for all users, three attempted fixes before identifying root cause
 
 ---
 
