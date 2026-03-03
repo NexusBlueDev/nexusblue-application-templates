@@ -1,6 +1,6 @@
 # Domain Registry — nexusblue.ai
 
-> Last updated: 2026-02-28
+> Last updated: 2026-03-03
 
 ## DNS Setup
 - **Provider:** Namecheap
@@ -21,6 +21,7 @@
 
 | Domain | Vercel Project | Notes |
 |--------|---------------|-------|
+| `beers-biz-checkin.nexusblue.ai` | beers-biz-dayton | Production — public check-in PWA, no auth | 2026-03-03 |
 | `pw-app-tawny.vercel.app` | pw-app | Auto-assigned Vercel domain (production) |
 
 ## Reserved Slugs (do not reuse)
@@ -33,6 +34,7 @@
 | `cnc` | cnc-platform |
 | `nexusblue` | nexusblue-website |
 | `scheduler` | pet_scheduler |
+| `beers-biz-checkin` | beers-biz-dayton |
 
 ## How to Add a New Project
 
