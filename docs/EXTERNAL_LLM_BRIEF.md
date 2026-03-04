@@ -4,7 +4,7 @@
 > enough context about NexusBlue's development environment, architecture, and standards
 > to help **plan and design new projects, features, and integrations**.
 >
-> **Last updated:** 2026-03-02 (rev 3 — added component classification, planning workflow, agent/integration standards)
+> **Last updated:** 2026-03-04 (rev 4 — added environment pipeline, dev agents, multi-LLM, AIRP)
 > **Maintained by:** NexusBlue Dev (nexusblue.ai)
 
 ---
@@ -28,19 +28,100 @@ Every project is built from this stack unless there's a documented reason to dev
 |-------|-----------|
 | Framework | Next.js 15 (App Router) + TypeScript |
 | Styling | Tailwind CSS v4 |
-| Database + Auth | Supabase (PostgreSQL + Auth + RLS + Realtime) |
+| Database + Auth | Supabase (PostgreSQL + Auth + RLS + Realtime + pgvector) |
 | Hosting | Vercel (auto-deploys via GitHub integration) |
 | CMS | Sanity.io (where content editing is needed) |
-| AI | Anthropic Claude API via Vercel AI SDK |
+| AI | Anthropic Claude API via Vercel AI SDK (multi-LLM router for dev agents) |
 | Payments | Stripe (Checkout, Webhooks, Customer Portal) |
 | Email | SendGrid |
 | Static apps | HTML5 + Vanilla JS (ES5) + GitHub Pages |
 | CI/CD | GitHub Actions (lint + typecheck + test on every push) |
 | Testing | Vitest (unit/integration) |
+| Dev Agents | GitHub Actions + Claude Code Action (self-healing CI, code review) |
 
 **Node.js 22 LTS** is required for all JS/TS projects.
 
 **"Use What We Have" Rule:** Before recommending a new tool or service, check whether the existing stack already solves the problem. If yes, use it. Document why if you bring in something new.
+
+---
+
+## Environment Pipeline (Three Environments)
+
+All projects operate in a three-environment pipeline:
+
+| Environment | Branch | Deploy Target | Purpose |
+|-------------|--------|---------------|---------|
+| **Sandbox** | `sandbox/*` | Vercel preview URL (auto) | Rapid prototyping, experiments. CI runs in advisory mode (failures don't block) |
+| **Dev** | `dev` | `[project].nexusblue.ai` preview domain | Testing/staging. CI must pass. PRs reviewed before merge |
+| **Production** | `main` | Production domain | Live/client-facing. Branch protection enforced |
+
+**Promotion flow:** `sandbox/*` → PR to `dev` → PR to `main`
+
+**Key rules:**
+- Sandbox branches are autonomous — agents can push fixes directly
+- Dev requires human PR review (supervised)
+- Production always requires human merge approval (supervised)
+- Stale `sandbox/*` branches auto-cleaned after 14 days (GitHub Actions cron)
+
+---
+
+## Development Agent Team
+
+Claude Code operates as the AI development team with defined agent roles:
+
+| Agent | Type | Trigger | Model | Description |
+|-------|------|---------|-------|-------------|
+| `dev-architect` | review | PR to `dev` | Haiku | Schema, RLS, migration review |
+| `dev-security` | review | PR to `main` | Haiku | Auth, validation, data exposure audit |
+| `dev-qa` | review | Module → LIVE | Haiku | Module standard compliance check |
+| `dev-docs` | gate | Pre-push | Haiku | Documentation freshness enforcement |
+| `dev-ci-healer` | automation | CI failure | Sonnet | Reads failure logs, generates fix |
+| `dev-sandbox-builder` | automation | Portal trigger | Sonnet | Receives spec, builds prototype |
+| `dev-promoter` | automation | Portal trigger | Sonnet | Creates PR from sandbox to dev |
+
+**Agent types:**
+- **review** — reads code, produces PASS / ISSUES FOUND assessment
+- **gate** — blocks a lifecycle transition until conditions met
+- **automation** — writes code, creates commits/PRs
+
+**Autonomy rules (non-negotiable):**
+
+| Environment | Default | Override? |
+|------------|---------|-----------|
+| Sandbox | Autonomous | No — always autonomous |
+| Dev | Supervised | Yes — can promote specific agents |
+| Production | Supervised | No — always supervised |
+
+---
+
+## Multi-LLM Strategy
+
+Agents use a model router that selects the right model for each task:
+
+| Task Type | Primary Model | Fallback | Use Case |
+|-----------|--------------|----------|----------|
+| Code generation | Claude Sonnet 4.6 | GPT-4o | CI healer, sandbox builder |
+| Judgment/classification | Claude Haiku 4.5 | Sonnet | Architect, security, QA reviews |
+| Heavy reasoning | Claude Opus 4.6 | Sonnet | Novel architecture, complex debugging |
+| Content generation | Claude Sonnet 4.6 | Haiku | PR descriptions, reports |
+| Embeddings/search | Voyage AI / OpenAI | — | Future: codebase search |
+
+**Budget controls:**
+- Per-project and global monthly LLM spend limits
+- 70% = info logged, 90% = warning in portal, 100% = block non-critical agents
+- CI healer always allowed regardless of budget
+
+---
+
+## Agent Isolation (AIRP)
+
+The Agent Isolation & Resource Reservation Protocol prevents conflicts when multiple Claude Code sessions run simultaneously:
+
+- **One project per session** — cross-project writes require human approval
+- **Declare resources before building** — migrations, flags, dependencies in plan phase
+- **Log cross-project bugs, don't fix them** — issue queue, not direct edits
+- **Migrations are reserved, not first-come-first-served** — claim in migration_registry
+- **Read-only access is always free** — boundary guard only blocks writes
 
 ---
 
@@ -50,8 +131,6 @@ Every NexusBlue project is classified as one of these types. The type determines
 
 ### 1. Platform Product
 **What it is:** A multi-tenant SaaS that NexusBlue builds and operates. Multiple client organizations use the same codebase. NexusBlue has a super-admin view across all orgs.
-
-**Examples:** pw-app (vehicle inspection SaaS), cnc-platform, pet_scheduler, nexusblue-website
 
 **Architecture requirements:**
 - `organizations` table — every tenant is a row
@@ -63,8 +142,6 @@ Every NexusBlue project is classified as one of these types. The type determines
 ### 2. Website / Standalone
 **What it is:** A single-tenant web application or marketing website for one client. No multi-tenancy.
 
-**Examples:** mcpc-website (nonprofit), cain-website-022026 (tax firm), sectorius-website
-
 **Architecture requirements:**
 - No `organizations` table, no `organization_id`
 - Standard RLS: users read/write their own records
@@ -73,12 +150,8 @@ Every NexusBlue project is classified as one of these types. The type determines
 ### 3. Static PWA
 **What it is:** Pure client-side HTML5 app. No backend, no auth, no database. GitHub Pages hosted.
 
-**Examples:** nexusblue-junior-jarvis (AI career game for expo booths)
-
 ### 4. Infrastructure / Scripts
 **What it is:** Server configuration, DevOps tooling, automation pipelines.
-
-**Examples:** nexusblue-servers (systemd/nginx), transcript-safety-pipeline (Python data pipeline)
 
 ---
 
@@ -160,7 +233,7 @@ Agents are background automation tasks. Full standard: `AGENT_STANDARD.md` v1.0.
 - AI-powered agents registered in `src/lib/agents/registry.ts`
 - Model rule: Sonnet for generation, Haiku for judgment, code for deterministic
 
-**Template:** Use `NEW_AGENT_PROMPT.md` when adding a background agent.
+**Dev agents** (CI healer, sandbox builder, etc.) run as GitHub Actions workflows using `anthropics/claude-code-action@v1`. See `DEV_AGENT_STANDARD.md` for the full development agent contract.
 
 ---
 
@@ -220,6 +293,8 @@ If during design you realize a component crosses a governance boundary (e.g., "t
 - **Streams for user-facing AI.** Never make users wait for a complete response
 - **Wrap AI streams in custom ReadableStream.** Never use `toTextStreamResponse()` — it leaks API errors mid-stream
 - **PWA service workers need auth route exclusions.** `NetworkOnly` rules before default cache
+- **Three-environment pipeline.** Design for sandbox (autonomous) → dev (supervised) → production (supervised)
+- **Budget-aware agents.** Every agent checks LLM budget before executing
 
 ---
 
@@ -265,10 +340,11 @@ All web projects use CSS custom properties with these canonical token names (val
 | pw-app | Platform Product | Vehicle inspection SaaS — WrapOps is org #1 | PWA, offline queue, PDF reports |
 | cnc-platform | Platform Product | CNC workshop guided workflows | Sanity CMS |
 | pet_scheduler | Platform Product | General scheduling SaaS | 4-role system, Google + MS Calendar OAuth |
-| nexusblue-website | Platform Product | NexusBlue company platform | Stripe, Sanity, super-admin portal |
+| nexusblue-website | Platform Product | NexusBlue company platform + super-admin portal | Stripe, Sanity, portal agents, dev agent tracking |
 | mcpc-website | Website / Standalone | Montgomery County Prevention Coalition | No CMS |
 | cain-website-022026 | Website / Standalone | Cain Tax Advisors | Sanity, Retell AI |
 | sectorius-website | Website / Standalone | Sectorius | — |
+| beers-biz-dayton | Website / Standalone | Beers & Biz check-in PWA | Shares nexusblue-website Supabase DB |
 | nexusblue-junior-jarvis | Static PWA | AI job guessing game (expo booth) | HTML5 / ES5, GitHub Pages |
 | nexusblue-servers | Infrastructure | DigitalOcean Droplet management | Ubuntu, systemd, nginx |
 
@@ -288,6 +364,9 @@ Server components reduce client bundle size. Server actions eliminate boilerplat
 **Why Tailwind v4?**
 CSS variables allow per-project theming while keeping class names consistent. Note: all element-selector overrides must be inside `@layer base {}` — unlayered resets silently break all utilities in production.
 
+**Why GitHub Actions for dev agents?**
+Ephemeral runners (no persistent state), free audit trail via workflow logs, no new infrastructure needed. Claude Code Action (`anthropics/claude-code-action@v1`) runs headless on runners.
+
 ---
 
 ## Template Documents Available
@@ -301,16 +380,34 @@ For consistent project setup, these templates live in `nexusblue-application-tem
 | `NEW_AGENT_PROMPT.md` | Adding a background cron/event agent | Copy-paste Claude Code prompt — creates route, cron registration, logging |
 | `MODULE_STANDARD.md` v1.3 | Reference during module development | Full directory contract, naming, DB conventions, AI rules, monetization |
 | `AGENT_STANDARD.md` v1.0 | Reference during agent development | Route pattern, cron registration, logging, error handling |
+| `DEV_AGENT_STANDARD.md` v1.0 | Reference for dev agent team | Dev agent contracts, autonomy rules, CI healer pattern, cost tracking |
 | `INTEGRATION_STANDARD.md` v1.0 | Reference during integration development | Auth patterns, type isolation, caching, error handling |
+| `ENVIRONMENT_PIPELINE_STANDARD.md` | Reference for environment setup | Three-environment pipeline, branch conventions, promotion gates |
+| `AGENT_ISOLATION_STANDARD.md` | Reference for multi-session safety | AIRP protocol, reservation schema, boundary guard |
 | `EXTERNAL_LLM_BRIEF.md` | Sharing context with any external AI | This document |
 
 ---
 
 ## Active Prefixes & Slugs (Do Not Reuse)
 
-**Project slugs:** `mcpc`, `cain`, `cnc`, `pw`, `nexusblue`, `scheduler`, `sectorius`
+**Project slugs:** `mcpc`, `cain`, `cnc`, `pw`, `nexusblue`, `scheduler`, `sectorius`, `beers-biz-checkin`
 
-**Module table prefixes:** `webmap_` (WebMap), `av_` (AppVault), `dev_` (Super-Admin Portal)
+**Module table prefixes:** `webmap_` (WebMap), `av_` (AppVault), `dev_` (Super-Admin Portal), `ca_` (Contacts & Attendance), `bg_` (BioGate), `gw_` (Grant Writer)
+
+---
+
+## Preview Domains (*.nexusblue.ai)
+
+| Domain | Project | Branch |
+|--------|---------|--------|
+| `pw-app.nexusblue.ai` | pw-app | dev |
+| `mcpc-website.nexusblue.ai` | mcpc-website | dev |
+| `nexusblue-dev.nexusblue.ai` | nexusblue-website | dev |
+| `cnc-platform.nexusblue.ai` | cnc-platform | dev |
+| `cain-website.nexusblue.ai` | cain-website-022026 | dev |
+| `pet-scheduler.nexusblue.ai` | pet_scheduler | dev |
+| `sectorius-website.nexusblue.ai` | sectorius-website | dev |
+| `beers-biz-checkin.nexusblue.ai` | beers-biz-dayton | production (public PWA) |
 
 ---
 
@@ -322,3 +419,4 @@ For consistent project setup, these templates live in `nexusblue-application-tem
 - No `vercel deploy` CLI (bypasses GitHub — code loss risk). Deploy via GitHub auto-deploy
 - No introducing new tools/services without checking if the existing stack covers it
 - No code without classification — every piece of work is classified before building
+- No direct pushes to `main` — always via PR with CI pass

@@ -1,7 +1,7 @@
 # New Module Starter Prompt
 
 > **Usage:** Copy the prompt below and paste it as your first message when adding a new
-> module to an existing NexusBlue Platform Product. It enforces all v5.6 module standards
+> module to an existing NexusBlue Platform Product. It enforces all module standards
 > from the first message.
 >
 > Replace `[MODULE_NAME]`, `[PREFIX]`, `[PROJECT_NAME]`, and bracketed sections before pasting.
@@ -13,7 +13,7 @@
 
 ```
 We are adding a new module to an existing NexusBlue project. Follow the global CLAUDE.md
-v5.6 standards and MODULE_STANDARD.md v1.3 exactly. Here is the module brief:
+standards and MODULE_STANDARD.md v1.3 exactly. Here is the module brief:
 
 Project:     [PROJECT_NAME]  (e.g., nexusblue-website)
 Module name: [MODULE_NAME]   (e.g., "Client Reports", "AI Chat", "Billing")
@@ -54,7 +54,11 @@ Before writing any code, do the following in order:
    - ls supabase/migrations/ | sort | tail -5
    - Note the highest number and use N+1
 
-3. Create the required planning docs (structure before implementation):
+3. Reserve migration number in AIRP:
+   - Check ~/.claude/agent-reservations.json for this project's DB ref
+   - Reserve the migration number to prevent conflicts with other sessions
+
+4. Create the required planning docs (structure before implementation):
    docs/modules/[module-name]/
    ├── README.md       — what it does, build plan, billing unit, role capability matrix
    ├── ARCHITECTURE.md — data flow, module boundaries, key design decisions
@@ -64,9 +68,9 @@ Before writing any code, do the following in order:
 
    src/lib/[module-name]/README.md  — public API surface, feature gates, dependencies
 
-4. Show me the planning docs for review before proceeding.
+5. Show me the planning docs for review before proceeding.
 
-5. Run architect review agent against the planning docs:
+6. Run architect review agent against the planning docs:
    - Every table has organization_id (Platform Products only)
    - RLS policies cover all 3 tiers
    - {prefix}_usage table present for billing metering
@@ -75,22 +79,22 @@ Before writing any code, do the following in order:
    - Migration is additive-only (no DROP, no destructive ALTER)
    Must PASS before proceeding to schema work.
 
-6. Once approved, create:
+7. Once approved, create:
    - src/types/[module-name].ts
    - supabase/migrations/0NN_[prefix]_core.sql
      (tables: [prefix]_module_permissions, [prefix]_module_defaults,
               [prefix]_feature_overrides, [prefix]_usage, plus domain tables)
    - Show me this SQL and confirm before writing to a file
 
-7. After migration is confirmed, scaffold:
+8. After migration is confirmed, scaffold:
    - src/lib/[module-name]/ (core library)
    - src/app/api/[module-name]/ (API routes)
    - src/app/(admin)/admin/[module-name]/ (admin UI)
    - src/components/[module-name]/ (module components)
 
-8. Register feature gates in the migration (INSERT INTO public.features).
+9. Register feature gates in the migration (INSERT INTO public.features).
 
-9. Update HANDOFF.md with the new module section.
+10. Update HANDOFF.md with the new module section.
 
 After planning docs are done, declare your understanding of the module in 3–5 lines
 and confirm all planning items above are done before starting schema work.
@@ -107,7 +111,7 @@ and confirm all planning items above are done before starting schema work.
 ### Before Any Code
 
 - [ ] Table prefix confirmed — no conflicts with existing migrations
-- [ ] Next migration number confirmed
+- [ ] Next migration number confirmed and reserved (AIRP)
 - [ ] `docs/modules/[module]/README.md` created
 - [ ] `docs/modules/[module]/ARCHITECTURE.md` created
 - [ ] `docs/modules/[module]/SCHEMA.md` created
@@ -181,5 +185,8 @@ docs/modules/{module}/
 | `webmap_` | WebMap | nexusblue-website |
 | `av_` | AppVault | nexusblue-website |
 | `dev_` | Super-Admin Portal | nexusblue-website |
+| `ca_` | Contacts & Attendance | nexusblue-website |
+| `bg_` | BioGate | nexusblue-website |
+| `gw_` | Grant Writer | nexusblue-website |
 
 > Full MODULE_STANDARD: `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md`
