@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 5.9**
+**Version: 6.0**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -51,6 +51,7 @@ When a session begins:
 4. **If TODO.md is absent**, create it and populate it from any human-required actions found in HANDOFF.md.
 5. **Auto-memory is loaded automatically.** Claude Code loads `~/.claude/projects/[path]/memory/MEMORY.md` into context for every session — no manual check needed. It is machine-local (not committed to git). Update it when you discover stable patterns worth preserving across sessions.
 6. **Verify git remote.** Run `git remote -v`. The origin MUST point to a `NexusBlueDev` repo (`https://github.com/NexusBlueDev/...`). If it points to a personal account or any other org, **stop and fix it** before doing any work: `git remote set-url origin https://github.com/NexusBlueDev/REPO-NAME.git`. This prevents code from being pushed to the wrong repo.
+6b. **AIRP registration (if multi-session work is active).** Check `~/.claude/agent-reservations.json` for active sessions on this project. If another session exists, warn the human and proceed only if approved. Register this session with `status: planning`. Note any cross-project issues in `~/.claude/cross-project-issues.md` that target this project. See `docs/AGENT_ISOLATION_STANDARD.md` for full protocol.
 7. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
 8. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
 9. **Start working.** Don't wait for confirmation on obvious next steps.
@@ -64,6 +65,7 @@ When a session begins:
 At the end of every session or when the user signals wrapping up:
 
 1. **Update HANDOFF.md** — add a session entry, update current state, update next steps.
+1b. **Release AIRP reservations (if registered).** Remove session from `~/.claude/agent-reservations.json`. Release migration reservations (update `last_applied` if migrations were applied). Review cross-project issue queue — log any new issues found this session.
 2. **Update TODO.md** — mark completed items done (with date), add any new human actions identified during the session, remove items that are no longer relevant.
 3. **Update MEMORY.md** if new stable patterns, gotchas, or conventions were discovered.
 4. **Update `project_library` (MANDATORY)** — if new features, tools, integrations, or architecture were shipped this session, INSERT rows into the project's `project_library` table via Supabase Management API. **If the table doesn't exist yet**, create it first using the portable schema at `/home/nexusblue/dev/nexusblue-website/supabase/cross-project/project_library_table.sql` (also save a copy to the project's `supabase/migrations/create_project_library.sql`). Categories: `feature`, `tool`, `integration`, `architecture`, `infrastructure`, `standard`, `highlight`, `reference`. Include title, summary (one line for card), content_md (markdown detail with ## heading and bullet points), tags (TEXT[]), and `project_slug` (the project's slug from `dev_projects`). Use `ON CONFLICT (title, project_slug) DO NOTHING` for idempotency. **Every shipped feature must have a library entry** — the Command Center Library page aggregates these across all projects. Skip this step only for projects without a Supabase database.
@@ -568,6 +570,7 @@ Before introducing any new tool, library, or service, check whether these solve 
 - **Commit at every major phase.** Don't let the repo fall behind.
 - **Push before deploy. Always.** Code MUST be committed and pushed to `NexusBlueDev` on GitHub before any deployment to Vercel or any other hosting. Never deploy local-only code. If it's not on GitHub, it doesn't exist.
 - **Co-authorship.** Include footer: `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>`
+- **Claim before commit (migrations).** Reserve migration numbers in `~/.claude/agent-reservations.json` during the plan phase, before writing any migration files. See AIRP protocol.
 
 ---
 
@@ -1712,6 +1715,11 @@ finish work → run docs agent → PASS → touch .docs-verified → git commit 
             "type": "command",
             "command": "/home/nexusblue/.claude/hooks/docs-gate.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "/home/nexusblue/.claude/hooks/boundary-guard.sh",
+            "timeout": 10
           }
         ]
       }
@@ -1737,6 +1745,44 @@ A GitHub Actions job (`docs-freshness`) runs on every push to `main`. It checks:
 This is **advisory** (warnings, not blocking) — it catches drift that slipped past the hook. If warnings appear, fix them in the next session.
 
 **Template:** `docs/github-ci-template.yml` — Job 4: Docs Freshness Check
+
+---
+
+## Agent Isolation & Resource Reservation Protocol (AIRP)
+
+When multiple Claude Code sessions run simultaneously across NexusBlue projects, AIRP prevents development conflicts. Full protocol at `docs/AGENT_ISOLATION_STANDARD.md`.
+
+### Core Rules
+
+1. **One project per session** — cross-project writes require human approval
+2. **Declare resources before building** — migrations, flags, deps in plan phase
+3. **Log cross-project bugs, don't fix them** — use `~/.claude/cross-project-issues.md`
+4. **Migrations are reserved, not first-come-first-served** — claim in `~/.claude/agent-reservations.json`
+5. **TTL is crash recovery** — 24h interactive, 2h CI, auto-cleaned by boundary guard hook
+6. **Read-only access is always free** — boundary guard only warns on writes
+
+### Runtime Files
+
+| File | Purpose |
+|------|---------|
+| `~/.claude/agent-reservations.json` | Session registry, migration reservations, cross-project requests |
+| `~/.claude/cross-project-issues.md` | Issue queue for bugs found in other projects |
+| `~/.claude/hooks/boundary-guard.sh` | PreToolUse hook — warns on cross-project writes (advisory v1.0) |
+
+### Session Lifecycle
+
+1. **Register** — at session start, claim project in `agent-reservations.json` (step 6b of Session Start Protocol)
+2. **Reserve** — on plan approval, claim migration numbers and declare resources
+3. **Build** — write only to your project; read any project freely; log cross-project bugs
+4. **Release** — at session end, remove session and reservations (step 1b of Session End Protocol)
+
+### Shared Database Coordination
+
+| DB Ref | Projects | Migration Owner |
+|--------|----------|-----------------|
+| `lbmxueowhpecoqlyhdcs` | nexusblue-website, beers-biz-dayton | nexusblue-website |
+
+Only the migration owner can claim migration numbers. Other projects on the same DB must request through the owner's session.
 
 ---
 
@@ -1879,6 +1925,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v5.6 — **Docs Gate Hook — automated enforcement.** Two-layer system replaces "please remember" prose: (1) Claude Code PreToolUse hook at `~/.claude/hooks/docs-gate.sh` blocks `git push` unless `.docs-verified` flag exists (created after docs agent returns PASS); (2) CI `docs-freshness` job in GitHub Actions warns on stale HANDOFF.md (>14 days), missing TODO.md, or missing ARCHITECTURE.md. Hook is global (all projects), skip-aware (only enforces on projects with HANDOFF.md), and single-use (flag consumed after each push). Updated Session End Protocol step 5 with hook workflow. Updated `github-ci-template.yml` to v5.1. Origin: user observed docs agent was consistently being skipped — "doc agent has been missing a lot"
 - v5.7 — **Never call getUser() in Server Component layouts** (CRITICAL gotcha). Server Components cannot write cookies, so when Supabase needs to refresh expired tokens the `setAll` callback fails and the call hangs indefinitely — showing a loading spinner for all users. Fix: move ALL auth to middleware (which CAN write cookies), pass auth state to layout via `x-admin-authenticated` request header, add cookie pre-check to skip Supabase calls when no session exists. Also: `useSearchParams()` in client components must always be wrapped in `<Suspense>`. Origin: cain-website 2026-03-02 — admin login page hung for all users, three attempted fixes before identifying root cause
 - v5.8 — **Docs agent now enforces project_library and dev_projects.** Added checks 8-9 to the docs agent prompt: (8) verify `project_library` rows were inserted for all features/tools/integrations shipped this session, (9) verify `dev_projects` registration exists for new projects. Previously these were Session End Protocol steps 4/4b but the docs agent (step 5) never verified they were completed — enforcement relied entirely on manual discipline and was consistently missed. Origin: 2026-03-03 audit found 8 shipped features across nexusblue-website and beers-biz-dayton with zero library entries, plus beers-biz-dayton was not registered in dev_projects at all
+- v6.0 — **Agent Isolation & Resource Reservation Protocol (AIRP).** File-based coordination layer at `~/.claude/agent-reservations.json` prevents multi-session conflicts. Core: one project per session, migration number reservations, cross-project issue queue (`~/.claude/cross-project-issues.md`), boundary guard hook (`~/.claude/hooks/boundary-guard.sh`) warns on cross-project writes (advisory v1.0, enforcement in v2.0). Session Start Protocol step 6b: register session and check for conflicts. Session End Protocol step 1b: release reservations. Commit Discipline: "claim before commit" for migrations. Shared DB coordination: beers-biz-dayton cannot claim migrations directly on nexusblue-website's DB. Full standard at `docs/AGENT_ISOLATION_STANDARD.md`. TTL-based crash recovery (24h interactive, 2h CI). Prerequisite for Phase 2 autonomous agents. Origin: 2026-03-04 — user request for agent boundary enforcement before enabling autonomous sandbox mode
 - v5.9 — **Centralized project library with `project_slug` attribution.** Added `project_slug TEXT` column to the portable `project_library` schema. Nullable — NULL means "belongs to DB owner project" (backwards compatible). Shared-DB projects (e.g., beers-biz-dayton using nexusblue-website's DB) MUST set `project_slug` on every INSERT so entries appear under the correct project on the Library page. Updated UNIQUE constraint from `(title)` to `(title, project_slug)` — allows same title across projects sharing a DB. Updated aggregation layer (`data.ts`) to use DB-level `project_slug` when available, fall back to app-layer attribution for older DBs. Added NB Retail Scanner to portal client config. Added CI `docs-freshness` job to nexusblue-website (was missing). Session End Protocol step 4 upgraded to MANDATORY with shared-DB documentation. Origin: 2026-03-03 — Library page showed only enterprise entries for Beers & Biz and NB Retail Scanner; retail scanner's 15 entries were invisible (no PORTAL_ config); beers-biz entries indistinguishable from nexusblue-website entries (no project_slug column)
 
 ---
