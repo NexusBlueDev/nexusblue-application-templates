@@ -1,4 +1,6 @@
-# GitHub Actions CI/CD Template — NexusBlue v5.1
+# GitHub Actions CI/CD Template — NexusBlue v6.0
+#
+# THREE-ENVIRONMENT PIPELINE: sandbox/* → dev → main (production)
 #
 # USAGE: Copy to .github/workflows/ci.yml in each project.
 # Replace the three ENV values below. Set VERCEL_TOKEN + VERCEL_TEAM_ID as repo secrets.
@@ -12,12 +14,17 @@
 #   curl -s "https://api.vercel.com/v9/projects/YOUR-PROJECT?teamId=team_hWt6xTS7kGfR781smAzdmvzV" \
 #     -H "Authorization: Bearer $VERCEL_TOKEN" | \
 #     python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('link',{}).get('repoId'))"
+#
+# ENVIRONMENTS:
+#   sandbox/*  → CI advisory (test failures don't block deploy), Vercel auto-preview URL
+#   dev        → CI required (tests must pass), deploys to [project].nexusblue.ai
+#   main       → CI required (tests must pass), deploys to production, creates release tag
 
 name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, 'sandbox/**']
   pull_request:
     branches: [main, dev]
 
@@ -29,7 +36,7 @@ env:
 jobs:
   # ─────────────────────────────────────────────
   # Job 1: Lint + Typecheck + Test
-  # Must pass before any deploy job runs.
+  # Required for dev/main. Advisory for sandbox/*.
   # ─────────────────────────────────────────────
   quality:
     name: Lint · Typecheck · Test
@@ -57,6 +64,9 @@ jobs:
 
       - name: Test
         run: npm test
+        # Sandbox branches: test failures are advisory (don't block deploy)
+        # The continue-on-error is controlled per-environment below
+        continue-on-error: ${{ startsWith(github.ref, 'refs/heads/sandbox/') }}
         env:
           # Mock values — tests use vi.mock() for Supabase, never hit a real DB
           NEXT_PUBLIC_SUPABASE_URL: https://mock.supabase.co
@@ -67,7 +77,54 @@ jobs:
           # NEXT_PUBLIC_SITE_URL: https://example.com
 
   # ─────────────────────────────────────────────
-  # Job 2: Deploy to Vercel Preview
+  # Job 2: Deploy Sandbox Preview
+  # Runs on push to sandbox/* branches.
+  # Vercel auto-generates a unique preview URL for each branch.
+  # Quality is advisory — deploys even if tests fail.
+  # ─────────────────────────────────────────────
+  deploy-sandbox:
+    name: Deploy → Sandbox Preview
+    needs: quality
+    if: always() && startsWith(github.ref, 'refs/heads/sandbox/') && github.event_name == 'push' && needs.quality.result != 'cancelled'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Vercel sandbox deploy
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          echo "Deploying sandbox branch: $BRANCH"
+          RESPONSE=$(curl -s -X POST \
+            "https://api.vercel.com/v13/deployments?teamId=${{ secrets.VERCEL_TEAM_ID }}" \
+            -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"name\": \"$PROJECT_NAME\",
+              \"gitSource\": {
+                \"type\": \"github\",
+                \"org\": \"NexusBlueDev\",
+                \"repo\": \"$REPO_NAME\",
+                \"repoId\": $REPO_ID,
+                \"ref\": \"$BRANCH\"
+              }
+            }")
+          DEPLOY_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id','ERROR'))")
+          DEPLOY_URL=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('url', 'pending'))")
+          echo "Sandbox deploy triggered: $DEPLOY_ID"
+          echo "Preview URL: https://$DEPLOY_URL"
+          if [ "$DEPLOY_ID" = "ERROR" ]; then
+            echo "Deploy failed to start. Response:"
+            echo "$RESPONSE"
+            exit 1
+          fi
+
+      - name: Report quality status
+        if: needs.quality.result == 'failure'
+        run: |
+          echo "::warning::Quality checks failed on sandbox branch — deploy proceeded (advisory mode)"
+          echo "Tests or lint failed. Review before promoting to dev."
+
+  # ─────────────────────────────────────────────
+  # Job 3: Deploy to Vercel Preview (dev branch)
   # Runs on push to dev branch only, after quality passes.
   # Deploys to [project].nexusblue.ai
   # ─────────────────────────────────────────────
@@ -103,7 +160,7 @@ jobs:
           fi
 
   # ─────────────────────────────────────────────
-  # Job 3: Deploy to Vercel Production
+  # Job 4: Deploy to Vercel Production
   # Runs on push to main branch only, after quality passes.
   # ─────────────────────────────────────────────
   deploy-production:
@@ -147,7 +204,7 @@ jobs:
           git push origin "$TAG"
 
   # ─────────────────────────────────────────────
-  # Job 4: Docs Freshness Check (Safety Net)
+  # Job 5: Docs Freshness Check (Safety Net)
   # Runs on push to main. Advisory — warns if docs are stale.
   # Primary enforcement is the local Claude Code hook.
   # ─────────────────────────────────────────────
@@ -207,3 +264,43 @@ jobs:
             echo ""
             echo "✓ All documentation checks passed"
           fi
+
+# ─────────────────────────────────────────────
+# SEPARATE WORKFLOW FILE: .github/workflows/sandbox-cleanup.yml
+# Copy the content below into a separate file to auto-delete stale sandbox branches.
+# ─────────────────────────────────────────────
+# name: Sandbox Cleanup
+#
+# on:
+#   schedule:
+#     - cron: '0 4 * * 0'  # Weekly on Sunday 4 AM UTC
+#   workflow_dispatch:      # Manual trigger
+#
+# jobs:
+#   cleanup:
+#     name: Delete stale sandbox branches
+#     runs-on: ubuntu-latest
+#     permissions:
+#       contents: write
+#
+#     steps:
+#       - uses: actions/checkout@v4
+#         with:
+#           fetch-depth: 0
+#
+#       - name: Delete sandbox branches with no commits in 14 days
+#         run: |
+#           CUTOFF=$(date -d '14 days ago' +%s 2>/dev/null || date -v-14d +%s)
+#           DELETED=0
+#
+#           for branch in $(git branch -r | grep 'origin/sandbox/' | sed 's|origin/||' | tr -d ' '); do
+#             LAST_COMMIT=$(git log -1 --format="%at" "origin/$branch" 2>/dev/null)
+#             if [ -n "$LAST_COMMIT" ] && [ "$LAST_COMMIT" -lt "$CUTOFF" ]; then
+#               echo "Deleting stale branch: $branch (last commit: $(date -d @$LAST_COMMIT +%Y-%m-%d 2>/dev/null || date -r $LAST_COMMIT +%Y-%m-%d))"
+#               git push origin --delete "$branch"
+#               DELETED=$((DELETED + 1))
+#             fi
+#           done
+#
+#           echo ""
+#           echo "Deleted $DELETED stale sandbox branch(es)"

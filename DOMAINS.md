@@ -1,27 +1,32 @@
 # Domain Registry — nexusblue.ai
 
-> Last updated: 2026-03-03
+> Last updated: 2026-03-04
 
 ## DNS Setup
 - **Provider:** Namecheap
 - **Wildcard CNAME:** `*.nexusblue.ai → cname.vercel-dns.com`
 - No per-project DNS changes needed — just add the subdomain to the Vercel project via API
 
-## Preview Domains (*.nexusblue.ai)
+## Preview Domains (*.nexusblue.ai → dev branch)
 
 | Subdomain | Vercel Project | Branch | Purpose | Added |
 |-----------|---------------|--------|---------|-------|
 | `pw-app.nexusblue.ai` | pw-app | dev | PW Inspection System — staging/testing | 2026-02-27 |
 | `mcpc-website.nexusblue.ai` | mcpc-website | dev | MCPC Website — staging/testing | 2026-02-28 |
-
-> **Note:** `mcpc-website.nexusblue.ai` listed here for registry; Vercel domain assignment may be pending.
-> Run the add-domain API call if not yet configured (see How to Add a New Project below).
+| `nexusblue-dev.nexusblue.ai` | nexusblue-website | dev | NexusBlue Platform — staging/testing | 2026-03-04 |
+| `cnc-platform.nexusblue.ai` | cnc-platform | dev | CNC Platform — staging/testing | 2026-03-04 |
+| `cain-website.nexusblue.ai` | cain-website-022026 | dev | Cain Tax Advisors — staging/testing | 2026-03-04 |
+| `pet-scheduler.nexusblue.ai` | pet-scheduler | dev | Pet Scheduler — staging/testing | 2026-03-04 |
+| `sectorius-website.nexusblue.ai` | sectorius-website | dev | Sectorius — staging/testing | 2026-03-04 |
 
 ## Production Domains
 
 | Domain | Vercel Project | Notes |
 |--------|---------------|-------|
-| `beers-biz-checkin.nexusblue.ai` | beers-biz-dayton | Production — public check-in PWA, no auth | 2026-03-03 |
+| `nexusblue.io` | nexusblue-website | NexusBlue Platform (production) |
+| `caintaxadvisors.com` | cain-website-022026 | Cain Tax Advisors (production) |
+| `sectorius.com` | sectorius-website | Sectorius (production) |
+| `beers-biz-checkin.nexusblue.ai` | beers-biz-dayton | Public check-in PWA, no auth |
 | `pw-app-tawny.vercel.app` | pw-app | Auto-assigned Vercel domain (production) |
 
 ## Reserved Slugs (do not reuse)
@@ -33,8 +38,11 @@
 | `cain` | cain-website-022026 |
 | `cnc` | cnc-platform |
 | `nexusblue` | nexusblue-website |
+| `nexusblue-dev` | nexusblue-website (preview) |
 | `scheduler` | pet_scheduler |
+| `pet-scheduler` | pet_scheduler (preview) |
 | `beers-biz-checkin` | beers-biz-dayton |
+| `sectorius-website` | sectorius-website |
 
 ## How to Add a New Project
 
