@@ -13,7 +13,7 @@
 |-----------|---------------|--------|---------|-------|
 | `pw-app.nexusblue.ai` | pw-app | dev | PW Inspection System — staging/testing | 2026-02-27 |
 | `mcpc-website.nexusblue.ai` | mcpc-website | dev | MCPC Website — staging/testing | 2026-02-28 |
-| `nexusblue-dev.nexusblue.ai` | nexusblue-website | dev | NexusBlue Platform — staging/testing | 2026-03-04 |
+| `nexusblue.nexusblue.ai` | nexusblue-website | dev | NexusBlue Platform — staging/testing | 2026-03-04 |
 | `cnc-platform.nexusblue.ai` | cnc-platform | dev | CNC Platform — staging/testing | 2026-03-04 |
 | `cain-website.nexusblue.ai` | cain-website-022026 | dev | Cain Tax Advisors — staging/testing | 2026-03-04 |
 | `pet-scheduler.nexusblue.ai` | pet-scheduler | dev | Pet Scheduler — staging/testing | 2026-03-04 |
@@ -38,7 +38,7 @@
 | `cain` | cain-website-022026 |
 | `cnc` | cnc-platform |
 | `nexusblue` | nexusblue-website |
-| `nexusblue-dev` | nexusblue-website (preview) |
+| `nexusblue` | nexusblue-website (preview) |
 | `scheduler` | pet_scheduler |
 | `pet-scheduler` | pet_scheduler (preview) |
 | `beers-biz-checkin` | beers-biz-dayton |

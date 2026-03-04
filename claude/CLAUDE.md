@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 6.0**
+**Version: 6.2**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -64,7 +64,7 @@ When a session begins:
 
 At the end of every session or when the user signals wrapping up:
 
-1. **Update HANDOFF.md** — add a session entry, update current state, update next steps.
+1. **Update HANDOFF.md** — add a session entry, update current state, update next steps. **If any errors, blockers, debugging sessions, or cascade failures occurred this session, include a "Lessons Learned" subsection in the session entry** — document what went wrong, the root cause, and what rule prevents it next time.
 1b. **Release AIRP reservations (if registered).** Remove session from `~/.claude/agent-reservations.json`. Release migration reservations (update `last_applied` if migrations were applied). Review cross-project issue queue — log any new issues found this session.
 2. **Update TODO.md** — mark completed items done (with date), add any new human actions identified during the session, remove items that are no longer relevant.
 3. **Update MEMORY.md** if new stable patterns, gotchas, or conventions were discovered.
@@ -75,6 +75,18 @@ At the end of every session or when the user signals wrapping up:
 6. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions. The `git push` will be blocked by the docs gate hook if `.docs-verified` is missing.
 7. **Deploy is automatic** — Vercel-hosted projects auto-deploy on push via GitHub integration. No manual deploy step needed. Only use `scripts/deploy.sh` as a fallback if auto-deploy fails.
 8. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
+9. **Testing summary (MANDATORY after every push).** After each push, output a clear testing block for the human:
+
+```
+## Where to Test
+- **Environment:** Preview (dev branch) / Production (main branch)
+- **URL:** [the exact URL to visit]
+- **Login:** [email] / [password] (or "no auth required" for public pages)
+- **What to verify:** [specific pages/features to check]
+- **Known limitations:** [anything that won't work in this environment]
+```
+
+Use production credentials for preview (same database). Use `nexusblue-admin@nexusblue.dev` / `NxB_dev_2026!` for super-admin portal access. This block must appear in the conversation output — not buried in HANDOFF.md. The human should be able to copy-paste the URL and go.
 
 > **IMPORTANT — Docs gate applies to ALL pushes, not just session-end.** Any time you `git push` — mid-session or at session close — the docs gate hook will block unless `.docs-verified` exists. The pattern: finish work → run docs agent → fix gaps → `touch .docs-verified` → commit → push. The hook deletes the flag after each push, so it must be re-created before the next push.
 
@@ -344,6 +356,12 @@ Every project's HANDOFF.md follows this structure:
 
 ## Project State
 [2-3 sentences: overall status, what's working, where we are]
+
+## Environment Status
+> **Branch:** [dev / main / sandbox/*]
+> **Preview:** [URL] — [READY / ERROR / N/A]
+> **Production:** [URL] — [READY / STALE (behind dev) / ERROR]
+> **Human Action Required:** [What the human must verify/approve before promoting]
 
 ## Completed
 - [What is done, with commit refs where relevant]
@@ -1262,6 +1280,38 @@ cacheOnNavigation: false,  // Auth state changes make cached navigations stale
 
 ---
 
+### Vercel — Large Native Packages Exceed 250MB Serverless Limit (CRITICAL)
+
+**Symptom:** Vercel deploy fails with `A Serverless Function has exceeded the unzipped maximum size of 250 MB`. Affects any route that imports (directly or transitively) a large native npm package.
+
+**Root cause:** Vercel's Node File Tracing (`@vercel/nft`) copies all transitively imported files into each serverless function bundle. Packages with native binaries like `@tensorflow/tfjs-node` (383MB) exceed the 250MB per-function limit. **`serverExternalPackages` does NOT prevent this** — it only tells webpack to treat the package as an external `require()`, but NFT still copies the files.
+
+**Fix — use `outputFileTracingExcludes` (top-level config, NOT experimental):**
+
+```typescript
+// next.config.ts
+const nextConfig: NextConfig = {
+  serverExternalPackages: ['@tensorflow/tfjs-node', '@vladmandic/face-api'],
+  outputFileTracingExcludes: {
+    '/**': [
+      './node_modules/@tensorflow/**',
+      './node_modules/@vladmandic/**',
+    ],
+  },
+  // ...
+};
+```
+
+**Rules:**
+- `outputFileTracingExcludes` is a **top-level** Next.js config property (not inside `experimental`)
+- Routes that depend on excluded packages will fail at runtime on Vercel — they need a fallback (Droplet API, WASM alternative, or graceful error)
+- Use `serverExternalPackages` AND `outputFileTracingExcludes` together — the first prevents webpack bundling, the second prevents NFT file copying
+- Any npm package with native binaries >50MB should be evaluated for this pattern before adding to a Vercel-deployed project
+- Transitive imports matter: if `identification.ts` imports `enrollment.ts` which imports TF, then ALL routes that import `identification.ts` pull TF into their bundles
+- Found 2026-03-04 on nexusblue-website — BioGate Phase 2 added routes that transitively imported TensorFlow, blocking ALL deploys for multiple sessions
+
+---
+
 ## Test Account Seeding Standard (Supabase Auth Projects)
 
 Every project with Supabase Auth has two distinct types of test accounts. These are separate concerns and must not be conflated.
@@ -1620,6 +1670,10 @@ Check:
 4. module_defaults seed rows included in migration
 5. No N+1 query risks in data access patterns
 6. Migration is additive-only (no DROP, no destructive ALTER)
+7. **Lessons review (pre-flight):** Scan CLAUDE.md "Stack-Specific Build Gotchas" section and
+   MEMORY.md gotchas for rules that apply to this work. Flag if the plan risks repeating a
+   known mistake (e.g., adding large native packages without outputFileTracingExcludes,
+   committing WIP to dev instead of sandbox/*, transitive import chains pulling heavy deps).
 Return: PASS, or ISSUES FOUND with file:line references.
 ```
 
@@ -1661,6 +1715,8 @@ Check:
 8. If new features, tools, integrations, or architecture were shipped this session: `project_library` rows inserted via Supabase Management API with correct `project_slug` (skip for projects without a Supabase database). Check today's commits against existing library entries — every shipped capability must have a row. For shared-DB projects, verify `project_slug` is set on all inserts — missing `project_slug` means the entry is invisible or misattributed on the Library page.
 9. If this is a new project: verify `dev_projects` registration exists in the nexusblue-website Supabase. If missing, flag it.
 10. All changes are committed and pushed — no uncommitted documentation sitting locally
+11. **Lessons learned gate:** If errors, blockers, debugging detours, or cascade failures occurred this session: (a) HANDOFF.md session entry has a "Lessons Learned" subsection documenting what went wrong and root cause, (b) if the lesson is reusable across projects, it has been added to global CLAUDE.md "Stack-Specific Build Gotchas" section, (c) MEMORY.md gotchas section updated. Missing lessons = GAPS FOUND.
+12. **Environment clarity:** HANDOFF.md session entry declares: Branch (`dev`/`main`/`sandbox/*`), Environment (Preview/Production/Sandbox), and Human Action Required (what the human must verify/approve before promoting to the next environment).
 Return: PASS, or GAPS FOUND listing each missing/stale document with what needs updating.
 ```
 
@@ -1926,6 +1982,8 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v5.7 — **Never call getUser() in Server Component layouts** (CRITICAL gotcha). Server Components cannot write cookies, so when Supabase needs to refresh expired tokens the `setAll` callback fails and the call hangs indefinitely — showing a loading spinner for all users. Fix: move ALL auth to middleware (which CAN write cookies), pass auth state to layout via `x-admin-authenticated` request header, add cookie pre-check to skip Supabase calls when no session exists. Also: `useSearchParams()` in client components must always be wrapped in `<Suspense>`. Origin: cain-website 2026-03-02 — admin login page hung for all users, three attempted fixes before identifying root cause
 - v5.8 — **Docs agent now enforces project_library and dev_projects.** Added checks 8-9 to the docs agent prompt: (8) verify `project_library` rows were inserted for all features/tools/integrations shipped this session, (9) verify `dev_projects` registration exists for new projects. Previously these were Session End Protocol steps 4/4b but the docs agent (step 5) never verified they were completed — enforcement relied entirely on manual discipline and was consistently missed. Origin: 2026-03-03 audit found 8 shipped features across nexusblue-website and beers-biz-dayton with zero library entries, plus beers-biz-dayton was not registered in dev_projects at all
 - v6.0 — **Agent Isolation & Resource Reservation Protocol (AIRP).** File-based coordination layer at `~/.claude/agent-reservations.json` prevents multi-session conflicts. Core: one project per session, migration number reservations, cross-project issue queue (`~/.claude/cross-project-issues.md`), boundary guard hook (`~/.claude/hooks/boundary-guard.sh`) warns on cross-project writes (advisory v1.0, enforcement in v2.0). Session Start Protocol step 6b: register session and check for conflicts. Session End Protocol step 1b: release reservations. Commit Discipline: "claim before commit" for migrations. Shared DB coordination: beers-biz-dayton cannot claim migrations directly on nexusblue-website's DB. Full standard at `docs/AGENT_ISOLATION_STANDARD.md`. TTL-based crash recovery (24h interactive, 2h CI). Prerequisite for Phase 2 autonomous agents. Origin: 2026-03-04 — user request for agent boundary enforcement before enabling autonomous sandbox mode
+- v6.2 — **Lessons Learned Protocol + Environment Clarity.** Three process changes: (1) Session End Protocol step 1 now requires "Lessons Learned" subsection in HANDOFF.md session entries when errors/blockers occurred — documenting root cause and prevention rule. (2) Docs agent checks 11-12 added: verify lessons are documented if failures happened, verify HANDOFF.md declares branch/environment/human-action-required. (3) Architect review check 7 added: pre-flight scan of CLAUDE.md gotchas and MEMORY.md to flag if current plan risks repeating a known mistake. (4) HANDOFF.md standard structure now includes "Environment Status" section with branch, preview/production URLs, and explicit human action required. Origin: 2026-03-04 — user request after Vercel deploy cascade: "I want to make sure that if anything fails all agents know globally they need to track lessons learned and fixes"
+- v6.1 — **Vercel 250MB serverless limit + outputFileTracingExcludes** (CRITICAL gotcha). `serverExternalPackages` does NOT prevent Vercel's NFT from copying native binaries into function bundles. Use `outputFileTracingExcludes` (top-level config, NOT experimental) to actually exclude large packages. Applied for `@tensorflow/tfjs-node` (383MB) on nexusblue-website — BioGate ML routes disabled on Vercel, need Droplet API. Also documents lesson: never batch-commit incomplete WIP to dev — use sandbox/* branches. Origin: 2026-03-04 — BioGate Phase 2 blocked ALL nexusblue-website deploys for multiple sessions
 - v5.9 — **Centralized project library with `project_slug` attribution.** Added `project_slug TEXT` column to the portable `project_library` schema. Nullable — NULL means "belongs to DB owner project" (backwards compatible). Shared-DB projects (e.g., beers-biz-dayton using nexusblue-website's DB) MUST set `project_slug` on every INSERT so entries appear under the correct project on the Library page. Updated UNIQUE constraint from `(title)` to `(title, project_slug)` — allows same title across projects sharing a DB. Updated aggregation layer (`data.ts`) to use DB-level `project_slug` when available, fall back to app-layer attribution for older DBs. Added NB Retail Scanner to portal client config. Added CI `docs-freshness` job to nexusblue-website (was missing). Session End Protocol step 4 upgraded to MANDATORY with shared-DB documentation. Origin: 2026-03-03 — Library page showed only enterprise entries for Beers & Biz and NB Retail Scanner; retail scanner's 15 entries were invisible (no PORTAL_ config); beers-biz entries indistinguishable from nexusblue-website entries (no project_slug column)
 
 ---
