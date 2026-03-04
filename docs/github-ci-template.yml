@@ -124,78 +124,18 @@ jobs:
           echo "Tests or lint failed. Review before promoting to dev."
 
   # ─────────────────────────────────────────────
-  # Job 3: Deploy to Vercel Preview (dev branch)
-  # Runs on push to dev branch only, after quality passes.
-  # Deploys to [project].nexusblue.ai
+  # Job 3: Tag Production Release
+  # Vercel GitHub integration auto-deploys dev and main.
+  # CI only tags releases — no duplicate API deploys.
   # ─────────────────────────────────────────────
-  deploy-preview:
-    name: Deploy → Preview
-    needs: quality
-    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Trigger Vercel preview deploy
-        run: |
-          RESPONSE=$(curl -s -X POST \
-            "https://api.vercel.com/v13/deployments?teamId=${{ secrets.VERCEL_TEAM_ID }}" \
-            -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"name\": \"$PROJECT_NAME\",
-              \"gitSource\": {
-                \"type\": \"github\",
-                \"org\": \"NexusBlueDev\",
-                \"repo\": \"$REPO_NAME\",
-                \"repoId\": $REPO_ID,
-                \"ref\": \"dev\"
-              }
-            }")
-          DEPLOY_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id','ERROR'))")
-          echo "Vercel preview deploy triggered: $DEPLOY_ID"
-          if [ "$DEPLOY_ID" = "ERROR" ]; then
-            echo "Deploy failed to start. Response:"
-            echo "$RESPONSE"
-            exit 1
-          fi
-
-  # ─────────────────────────────────────────────
-  # Job 4: Deploy to Vercel Production
-  # Runs on push to main branch only, after quality passes.
-  # ─────────────────────────────────────────────
-  deploy-production:
-    name: Deploy → Production
+  tag-release:
+    name: Tag Release
     needs: quality
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Trigger Vercel production deploy
-        run: |
-          RESPONSE=$(curl -s -X POST \
-            "https://api.vercel.com/v13/deployments?teamId=${{ secrets.VERCEL_TEAM_ID }}" \
-            -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"name\": \"$PROJECT_NAME\",
-              \"target\": \"production\",
-              \"gitSource\": {
-                \"type\": \"github\",
-                \"org\": \"NexusBlueDev\",
-                \"repo\": \"$REPO_NAME\",
-                \"repoId\": $REPO_ID,
-                \"ref\": \"main\"
-              }
-            }")
-          DEPLOY_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id','ERROR'))")
-          echo "Vercel production deploy triggered: $DEPLOY_ID"
-          if [ "$DEPLOY_ID" = "ERROR" ]; then
-            echo "Deploy failed to start. Response:"
-            echo "$RESPONSE"
-            exit 1
-          fi
 
       - name: Tag release
         run: |
