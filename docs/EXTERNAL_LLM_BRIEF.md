@@ -402,7 +402,7 @@ For consistent project setup, these templates live in `nexusblue-application-tem
 |--------|---------|--------|
 | `pw-app.nexusblue.ai` | pw-app | dev |
 | `mcpc-website.nexusblue.ai` | mcpc-website | dev |
-| `nexusblue-dev.nexusblue.ai` | nexusblue-website | dev |
+| `nexusblue.nexusblue.ai` | nexusblue-website | dev |
 | `cnc-platform.nexusblue.ai` | cnc-platform | dev |
 | `cain-website.nexusblue.ai` | cain-website-022026 | dev |
 | `pet-scheduler.nexusblue.ai` | pet_scheduler | dev |
