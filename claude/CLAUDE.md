@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 6.2**
+**Version: 6.4**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -52,9 +52,10 @@ When a session begins:
 5. **Auto-memory is loaded automatically.** Claude Code loads `~/.claude/projects/[path]/memory/MEMORY.md` into context for every session — no manual check needed. It is machine-local (not committed to git). Update it when you discover stable patterns worth preserving across sessions.
 6. **Verify git remote.** Run `git remote -v`. The origin MUST point to a `NexusBlueDev` repo (`https://github.com/NexusBlueDev/...`). If it points to a personal account or any other org, **stop and fix it** before doing any work: `git remote set-url origin https://github.com/NexusBlueDev/REPO-NAME.git`. This prevents code from being pushed to the wrong repo.
 6b. **AIRP registration (if multi-session work is active).** Check `~/.claude/agent-reservations.json` for active sessions on this project. If another session exists, warn the human and proceed only if approved. Register this session with `status: planning`. Note any cross-project issues in `~/.claude/cross-project-issues.md` that target this project. See `docs/AGENT_ISOLATION_STANDARD.md` for full protocol.
-7. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
-8. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
-9. **Start working.** Don't wait for confirmation on obvious next steps.
+7. **Process health check (MANDATORY).** Run `~/.claude/hooks/process-health.sh check`. This detects orphaned Claude Code instances, stale VS Code extension hosts, resource pressure, and port conflicts. If orphans are found, run `process-health.sh cleanup` before starting work. If critical thresholds are hit (RAM < 2GB, disk > 85%), flag to the user immediately. **Do not skip this step** — orphaned processes from extension updates, crashed sessions, or multi-session work silently degrade the entire Droplet.
+8. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
+9. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
+10. **Start working.** Don't wait for confirmation on obvious next steps.
 
 > **New Project Rule:** When creating a brand new project (no existing HANDOFF.md, no git history), **do NOT explore or read other projects on the Droplet.** You already know the stack, conventions, and templates from this global CLAUDE.md. Scaffold from knowledge, not from scanning unrelated repos. Reading other projects wastes time, risks context pollution, and adds no value when the standards are documented here. Only reference another project if the user explicitly asks you to copy a specific pattern from it.
 
@@ -74,7 +75,8 @@ At the end of every session or when the user signals wrapping up:
 5. **Run docs agent (MANDATORY GATE — enforced by hook)** — invoke the documentation enforcement agent (see Agent Orchestration Standard) to verify all documents are current. Fix any gaps it finds. **This step MUST complete before step 6.** After the docs agent returns PASS, run `touch .docs-verified` to unlock the push gate. If GAPS FOUND, fix them and re-run until PASS. The PreToolUse hook on `git push` will block if this step is skipped (see Docs Gate Hook section).
 6. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions. The `git push` will be blocked by the docs gate hook if `.docs-verified` is missing.
 7. **Deploy is automatic** — Vercel-hosted projects auto-deploy on push via GitHub integration. No manual deploy step needed. Only use `scripts/deploy.sh` as a fallback if auto-deploy fails.
-8. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
+8. **Process cleanup.** Run `~/.claude/hooks/process-health.sh cleanup` to kill any orphaned Claude Code instances and clean stale VS Code logs. This prevents process accumulation between sessions.
+9. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
 9. **Testing summary (MANDATORY after every push).** After each push, output a clear testing block for the human:
 
 ```
@@ -732,13 +734,21 @@ The Droplet is the single development environment for all projects. Keeping it h
 
 ### Session Start Health Check
 
-At the start of every session (after reading HANDOFF.md/TODO.md), run a quick health check:
+At the start of every session (step 7 of Session Start Protocol), run:
 
 ```bash
-free -h | head -2 && echo "---" && df -h / | tail -1 && echo "---" && uptime
+~/.claude/hooks/process-health.sh check
 ```
 
-**Alert thresholds — flag to the user if any are hit:**
+This replaces the manual `free -h && df -h && uptime` check. The script detects:
+- **Resource pressure** — RAM, disk, swap, load average (same thresholds as before)
+- **Orphaned Claude Code instances** — stale processes from prior sessions or extension updates
+- **Stale VS Code extension host logs** — accumulated log dirs from reconnection cycles
+- **Dev server port conflicts** — multiple listeners on the same port
+
+If orphans are found, run `process-health.sh cleanup` before starting work.
+
+**Alert thresholds (unchanged):**
 
 | Metric | Warning | Critical |
 |--------|---------|----------|
@@ -747,7 +757,7 @@ free -h | head -2 && echo "---" && df -h / | tail -1 && echo "---" && uptime
 | **Disk usage** | > 70% | > 85% |
 | **Load average (1 min)** | > 8 (1x cores) | > 16 (2x cores) |
 
-If a critical threshold is hit, flag it immediately — do not start work until the issue is understood. Common causes: orphaned `node` processes from crashed dev servers, large `node_modules` bloat, log files filling disk.
+**Automated hygiene:** A cron job runs `process-health.sh cleanup` every 6 hours and at boot. This catches orphans between sessions. The cron log is at `~/logs/process-health.log`.
 
 ### Proactive Maintenance Rules
 
@@ -756,6 +766,7 @@ If a critical threshold is hit, flag it immediately — do not start work until 
 - **Don't leave dev servers running** between sessions. Stop them when done. They consume 100-300 MB each and leak memory over time.
 - **Clean build caches periodically.** `.next/cache` and `node_modules/.cache` can grow silently. If disk is running low, these are safe to delete.
 - **One Claude Code instance per project.** Multiple instances on the same project duplicate file watchers and memory usage.
+- **Extension updates orphan existing instances.** When VS Code auto-updates the Claude Code extension, old `claude` processes keep running but their file watchers lose their paths (23,000+ "Watcher shutdown" warnings observed 2026-03-05). The `process-health.sh` cron job handles this automatically, but always run the check at session start if the Droplet feels sluggish.
 
 ### Unattended Security Upgrades
 
@@ -1309,6 +1320,85 @@ const nextConfig: NextConfig = {
 - Any npm package with native binaries >50MB should be evaluated for this pattern before adding to a Vercel-deployed project
 - Transitive imports matter: if `identification.ts` imports `enrollment.ts` which imports TF, then ALL routes that import `identification.ts` pull TF into their bundles
 - Found 2026-03-04 on nexusblue-website — BioGate Phase 2 added routes that transitively imported TensorFlow, blocking ALL deploys for multiple sessions
+
+---
+
+### Next.js `after()` + Client Polling — Single-Poll Anti-Pattern
+
+**Symptom:** Fire-and-forget background work triggered via `after()` appears to silently fail. The UI briefly shows a loading state, then reverts to "nothing here" with no error. The background work actually completes successfully — the client just never sees the result.
+
+**Root cause:** Two compounding bugs in the polling pattern:
+
+1. **Single poll too early.** A `setTimeout(fn, 10000)` polls once after 10 seconds, but the background work (AI generation, data processing, etc.) takes 30-60+ seconds. The poll always fires before the work is done.
+
+2. **Empty result poisons lazy-loading guards.** The `after()` callback typically deletes old data before regenerating. The premature poll returns `[]`. Setting `[]` as React state passes truthy checks like `if (!data)` — so the component's lazy-loading guard (`if (!data) { fetch... }`) never re-fetches. The UI is permanently stuck showing empty.
+
+**Fix — poll the status field in a loop, not the result:**
+
+```typescript
+// ❌ Broken — single poll, polls result not status
+setTimeout(async () => {
+  const res = await fetch(`/api/thing/${id}/results`);
+  if (res.ok) setResults(await res.json());
+  setLoading(false);
+}, 10000);
+
+// ✅ Fixed — poll status in loop, fetch results when done
+setResults(null); // Clear cache so lazy-load guard works
+const maxAttempts = 12; // 12 × 10s = 2 min
+for (let i = 0; i < maxAttempts; i++) {
+  await new Promise(r => setTimeout(r, 10000));
+  const statusRes = await fetch(`/api/thing/${id}`);
+  if (!statusRes.ok) continue;
+  const statusData = await statusRes.json();
+  if (statusData.status === 'completed' || statusData.status === 'failed') {
+    const resultsRes = await fetch(`/api/thing/${id}/results`);
+    if (resultsRes.ok) setResults(await resultsRes.json());
+    break;
+  }
+}
+```
+
+**Rules:**
+- NEVER use a single `setTimeout` to poll for results of `after()` background work — you don't know how long it takes
+- Poll the **status field** (the source of truth for completion), not the **results endpoint**
+- Clear cached state to `null` before starting — `[]` is truthy and will prevent lazy-loading guards from re-fetching
+- Always distinguish `null` (not loaded yet) from `[]` (loaded but empty) in React state
+- Match poll interval to expected duration — if work takes 30-60s, poll every 10s for up to 2 min
+- Always have a max attempt limit to avoid infinite polling
+- Put `setLoading(false)` in a `finally` block so the UI always recovers
+- Found 2026-03-04 on nexusblue-website — WebMap "Regenerate Recs" button appeared broken for all scans
+
+---
+
+### VS Code Remote-SSH — Extension Updates Orphan Claude Code Processes (CRITICAL)
+
+**Symptom:** VS Code becomes unresponsive, cannot open folders, high load average on the Droplet. No obvious error — just "sluggish" behavior. `free -h` shows unexpectedly high memory usage even with no dev servers running.
+
+**Root cause:** When VS Code auto-updates the Claude Code extension (or any extension with long-running native processes), the old extension binary is replaced on disk but running processes are NOT terminated. The old `claude` processes keep running but their file watchers lose their watched paths, generating thousands of "Watcher shutdown because watched path got deleted" warnings per hour. Multiple sessions across projects compound the problem — each orphan consumes 200-350MB RAM and constant CPU.
+
+**Why the old health check didn't catch it:** The manual `free -h && df -h && uptime` check only shows aggregate resource usage. With 16GB RAM, 3 orphaned processes consuming 1GB total didn't cross the 4GB warning threshold. The degradation was caused by accumulated file watcher failures and CPU load, not raw memory pressure.
+
+**Fix — automated process health check:**
+
+```bash
+# Session start (step 7 of Session Start Protocol)
+~/.claude/hooks/process-health.sh check
+
+# If orphans found:
+~/.claude/hooks/process-health.sh cleanup
+
+# Automated: cron runs cleanup every 6 hours + at boot
+# Log: ~/logs/process-health.log
+```
+
+**Rules:**
+- ALWAYS run `process-health.sh check` at session start — it's step 7 of the Session Start Protocol
+- Run `process-health.sh cleanup` at session end — it's step 8 of the Session End Protocol
+- The cron job (`0 */6 * * *`) catches orphans between sessions — but don't rely on it alone
+- Extension updates typically happen overnight — if the Droplet feels sluggish in the morning, orphans are the first thing to check
+- If you see "Watcher shutdown because watched path got deleted" in VS Code server logs, orphaned processes from an extension update are almost certainly the cause
+- Found 2026-03-05 — 3 orphaned Claude instances (1GB RAM, 140 CPU-minutes), 23,060 watcher shutdown warnings, VS Code unable to open folders
 
 ---
 
@@ -1984,6 +2074,8 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v6.0 — **Agent Isolation & Resource Reservation Protocol (AIRP).** File-based coordination layer at `~/.claude/agent-reservations.json` prevents multi-session conflicts. Core: one project per session, migration number reservations, cross-project issue queue (`~/.claude/cross-project-issues.md`), boundary guard hook (`~/.claude/hooks/boundary-guard.sh`) warns on cross-project writes (advisory v1.0, enforcement in v2.0). Session Start Protocol step 6b: register session and check for conflicts. Session End Protocol step 1b: release reservations. Commit Discipline: "claim before commit" for migrations. Shared DB coordination: beers-biz-dayton cannot claim migrations directly on nexusblue-website's DB. Full standard at `docs/AGENT_ISOLATION_STANDARD.md`. TTL-based crash recovery (24h interactive, 2h CI). Prerequisite for Phase 2 autonomous agents. Origin: 2026-03-04 — user request for agent boundary enforcement before enabling autonomous sandbox mode
 - v6.2 — **Lessons Learned Protocol + Environment Clarity.** Three process changes: (1) Session End Protocol step 1 now requires "Lessons Learned" subsection in HANDOFF.md session entries when errors/blockers occurred — documenting root cause and prevention rule. (2) Docs agent checks 11-12 added: verify lessons are documented if failures happened, verify HANDOFF.md declares branch/environment/human-action-required. (3) Architect review check 7 added: pre-flight scan of CLAUDE.md gotchas and MEMORY.md to flag if current plan risks repeating a known mistake. (4) HANDOFF.md standard structure now includes "Environment Status" section with branch, preview/production URLs, and explicit human action required. Origin: 2026-03-04 — user request after Vercel deploy cascade: "I want to make sure that if anything fails all agents know globally they need to track lessons learned and fixes"
 - v6.1 — **Vercel 250MB serverless limit + outputFileTracingExcludes** (CRITICAL gotcha). `serverExternalPackages` does NOT prevent Vercel's NFT from copying native binaries into function bundles. Use `outputFileTracingExcludes` (top-level config, NOT experimental) to actually exclude large packages. Applied for `@tensorflow/tfjs-node` (383MB) on nexusblue-website — BioGate ML routes disabled on Vercel, need Droplet API. Also documents lesson: never batch-commit incomplete WIP to dev — use sandbox/* branches. Origin: 2026-03-04 — BioGate Phase 2 blocked ALL nexusblue-website deploys for multiple sessions
+- v6.4 — **Process hygiene automation — orphan detection, cleanup, and prevention.** Created `~/.claude/hooks/process-health.sh` — detects orphaned Claude Code instances, stale VS Code extension hosts, resource pressure, and port conflicts. Three modes: `check` (session start diagnostics), `cleanup` (kill orphans + clean logs), `status` (one-liner for dashboards). Cron job runs cleanup every 6 hours + at boot (`~/logs/process-health.log`). Added mandatory step 7 to Session Start Protocol (process health check) and step 8 to Session End Protocol (process cleanup). Updated Droplet Health section to document extension update orphan pattern and reference the automated script. Root cause: Claude Code extension auto-update at 01:02 AM orphaned 3 claude processes (1GB RAM, 140 CPU-minutes) and caused 23,060 file watcher shutdown warnings — VS Code couldn't open folders due to accumulated resource pressure. Not caught in prior session because the manual `free -h` health check doesn't detect orphaned processes by PID. Origin: 2026-03-05 — user unable to open folders in VS Code
+- v6.3 — **Next.js `after()` + client polling anti-pattern** (gotcha). Single `setTimeout` polling for `after()` background work results always fires too early (10s vs 30-60s actual). Combined with clearing old data before regeneration, the premature poll returns `[]` which poisons React lazy-loading guards (`if (!data)` treats `[]` as truthy). Fix: poll the status field in a loop until completed/failed, clear state to `null` (not `[]`) before starting, put loading reset in `finally`. Origin: 2026-03-04 — WebMap "Regenerate Recs" appeared broken on all scans
 - v5.9 — **Centralized project library with `project_slug` attribution.** Added `project_slug TEXT` column to the portable `project_library` schema. Nullable — NULL means "belongs to DB owner project" (backwards compatible). Shared-DB projects (e.g., beers-biz-dayton using nexusblue-website's DB) MUST set `project_slug` on every INSERT so entries appear under the correct project on the Library page. Updated UNIQUE constraint from `(title)` to `(title, project_slug)` — allows same title across projects sharing a DB. Updated aggregation layer (`data.ts`) to use DB-level `project_slug` when available, fall back to app-layer attribution for older DBs. Added NB Retail Scanner to portal client config. Added CI `docs-freshness` job to nexusblue-website (was missing). Session End Protocol step 4 upgraded to MANDATORY with shared-DB documentation. Origin: 2026-03-03 — Library page showed only enterprise entries for Beers & Biz and NB Retail Scanner; retail scanner's 15 entries were invisible (no PORTAL_ config); beers-biz entries indistinguishable from nexusblue-website entries (no project_slug column)
 
 ---
