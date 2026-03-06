@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 6.4**
+**Version: 6.7**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -29,6 +29,115 @@ You move with **confidence and velocity**. You do not ask for permission on rout
 
 ---
 
+## Core Platform Architecture (MANDATORY CONTEXT — READ FIRST)
+
+**Every NexusBlue project is a product or service running on the Core Platform.** This is not optional context — it is the governing architecture for all development work.
+
+### The Three-Level Hierarchy
+
+```
+Core Platform (invisible infrastructure — governed by the founder + Claude)
+├── Product Apps (each serves a market with its own brand, pricing, clients)
+│   ├── NexusBlue App (PaaS — AI consulting, training, services for business clients)
+│   ├── Pet Scheduler (white-label SaaS — scheduling for service businesses)
+│   ├── WrapOps / PW (white-label PaaS — vehicle wrap industry operations)
+│   └── Future products (same pattern — Core underneath, product-specific on top)
+└── Engineering Infrastructure
+    └── ForgeAI (governs all products and Core itself — 38 agents, compliance, docs)
+```
+
+**Core is not a product.** It has no brand, no UI, no users. It is the standard — the shared primitives, governance, AI layer, field registry, capability system, tenant isolation, and compliance framework that every product runs on.
+
+**Products are applications built ON Core.** Each product activates solution packs from Core, defines its own object types/fields/workflows for its market, has its own clients (tenants) underneath it, and can be white-labeled or not.
+
+**Tenants are clients of a product, not clients of Core.** A dog walker knows Pet Scheduler. MCPC knows NexusBlue. Neither knows Core exists.
+
+### What Core Provides (Shared by ALL Products)
+
+- **6 Universal Primitives:** Entity, Relationship, Event, Process, Task, Consent
+- **Field Registry:** Semantic field definitions (AI-readable, compliance-aware, validation-enforced)
+- **Capability System:** Module registry + capability registry + effective state resolution (policy, plan, dependency aware)
+- **Solution Packs:** Configuration bundles that define object types, field sets, workflows, capabilities for a market/industry
+- **Tenant Isolation:** Shared DB + RLS (default) → schema-per-tenant → database-per-tenant (progressive)
+- **AI Pipeline:** Enrichment, scoring, retrieval-first Q&A, semantic mapping — all governed by field registry
+- **Auth + Governance:** Supabase Auth, RLS, audit events, consent records, compliance framework
+- **Integration Layer:** External refs, field mappings, enum translations for third-party system sync
+
+### Architecture Model: Hybrid Metadata-Driven
+
+Core uses typed core tables for universal primitives + JSONB attribute columns governed by a field registry. Not pure EAV (too complex), not typed-tables-per-module (no flexibility). Three JSONB attribute groups on entities:
+- `core_attributes` — defined by solution pack (stable, AI-understood, tenant can't remove)
+- `custom_attributes` — defined by tenant (their business-specific fields)
+- `computed_attributes` — set by AI/automation only (full provenance, never manually edited)
+
+### Field Registry Is Three Layers Deep
+
+1. **Platform fields** (Core) — universal across all products. Every entity has: name, status, owner_id, governance.
+2. **Product fields** (Solution Pack) — specific to that product's market. NexusBlue person has lifecycle_stage. Scheduler person has availability.
+3. **Tenant fields** (Custom) — specific to that tenant's business. Added via admin UI, validated by registry.
+
+### Capability System Is Three Layers Deep
+
+1. **Core capabilities** — always on (audit, governance, AI infrastructure). Products/tenants cannot disable.
+2. **Product capabilities** — what the product offers. Products select from Core's universe.
+3. **Tenant capabilities** — what the tenant's plan allows. Product sets ceiling. Plan determines access. Policy can still block.
+
+One-way ratchet: no level can escalate above its parent.
+
+### How Products Are Built
+
+Each product is its own Next.js app that imports `@nexusbluedev/core` (shared package, private on GitHub Packages). Products share infrastructure, not UI. A scheduling app and a consulting platform don't share screens — they share the entity model, field registry, capability system, AI pipeline, and governance.
+
+### Rules for Every Session
+
+- **Never build module-specific foundational tables.** Use Core primitives (platform_entities, platform_events, etc.).
+- **Never hardcode fields as columns.** Register them in the field registry. Use JSONB attributes.
+- **Every entity, event, relationship, process, and task has `tenant_id`.** No exceptions.
+- **AI features read the field registry** to understand data semantically. No hardcoded field assumptions.
+- **Governance metadata on every entity.** Classification, residency, retention, legal basis.
+- **Solution packs are configuration, not code.** New industry = new pack definition, zero migrations.
+
+### Reference Documents
+
+- Full architecture recommendation: `~/sandbox/plans/customer-operations-platform/PLATFORM_ARCHITECTURE_RECOMMENDATION.md`
+- OpenAI strategic direction docs: `~/sandbox/plans/customer-operations-platform/` (input documents)
+- Existing product plans: `~/sandbox/ideas/` and `~/sandbox/plans/` (each maps to a solution pack on Core)
+
+---
+
+## Workspace Registry (Global)
+
+The NexusBlue development environment is organized into distinct workspaces. Each workspace has its own `CLAUDE.md` that governs session behavior when opened in that directory. **Every Claude session should know which workspace it's in and what the rules are.**
+
+| Workspace | Path | Purpose | Git? | Session Protocols? |
+|-----------|------|---------|------|--------------------|
+| **Projects** | `~/dev/{name}/` | Production codebases — deployed, maintained, client-facing | Yes | Full (HANDOFF, TODO, docs gate, commit discipline) |
+| **Sandbox** | `~/sandbox/` | Planning & ideation — ideas, plans, models, prototypes | No | None (speed over polish) |
+| **Ops** | `~/ops/` | Operational issues — incidents, runbooks, audits, infra notes | No | None (incident templates, postmortems) |
+| **Clients** | `~/clients/` | Pre-project client intelligence — discovery, assets, meeting notes | No | None (client templates) |
+| **Research** | `~/research/` | Tech evaluations, spikes, benchmarks — "should we use X or Y?" | No | None (evaluation templates) |
+| **Scripts** | `~/scripts/` | Cross-project automation & Droplet-wide utilities | No | None (script headers) |
+| **Logs** | `~/logs/` | System and service logs (managed by systemd, cron, process-health) | No | N/A (read-only reference) |
+| **Personal** | `~/personal/` | Personal files — not governed by NexusBlue standards | No | N/A |
+
+**Routing rules:**
+- Code that gets deployed → `~/dev/`
+- Ideas that might become code → `~/sandbox/`
+- Problems with live systems → `~/ops/`
+- Client context before a project exists → `~/clients/`
+- "Should we use X?" analysis → `~/research/`
+- Utilities that serve multiple projects → `~/scripts/`
+- Scripts for ONE project → `~/dev/{project}/scripts/`
+
+**Promotion paths:**
+- `~/sandbox/` idea approved → create repo in `~/dev/`, archive sandbox artifacts
+- `~/clients/` discovery complete → project created in `~/dev/`, client context moves to project repo
+- `~/research/` evaluation decided → findings referenced from project `ARCHITECTURE.md`
+- `~/scripts/` utility proves valuable → promote to `nexusblue-application-templates` or `nexusblue-servers`
+- `~/ops/` incident resolved → move to `~/ops/archive/`, update runbooks with prevention steps
+
+---
+
 ## HANDOFF.md Governs the Project
 
 > **HANDOFF.md is the project's source of truth.** It is what any developer or AI reads
@@ -51,7 +160,7 @@ When a session begins:
 4. **If TODO.md is absent**, create it and populate it from any human-required actions found in HANDOFF.md.
 5. **Auto-memory is loaded automatically.** Claude Code loads `~/.claude/projects/[path]/memory/MEMORY.md` into context for every session — no manual check needed. It is machine-local (not committed to git). Update it when you discover stable patterns worth preserving across sessions.
 6. **Verify git remote.** Run `git remote -v`. The origin MUST point to a `NexusBlueDev` repo (`https://github.com/NexusBlueDev/...`). If it points to a personal account or any other org, **stop and fix it** before doing any work: `git remote set-url origin https://github.com/NexusBlueDev/REPO-NAME.git`. This prevents code from being pushed to the wrong repo.
-6b. **AIRP registration (if multi-session work is active).** Check `~/.claude/agent-reservations.json` for active sessions on this project. If another session exists, warn the human and proceed only if approved. Register this session with `status: planning`. Note any cross-project issues in `~/.claude/cross-project-issues.md` that target this project. See `docs/AGENT_ISOLATION_STANDARD.md` for full protocol.
+6b. **AIRP registration (if multi-session work is active).** Check `~/.claude/agent-reservations.json` for active sessions on this project. If another session exists, warn the human and proceed only if approved. Register this session with `status: planning` and **include `pid` field** (your Claude Code process PID — obtain via `echo $PPID` or walk the process tree). The PID enables automatic cleanup when a session dies ungracefully. Note any cross-project issues in `~/.claude/cross-project-issues.md` that target this project. See `docs/AGENT_ISOLATION_STANDARD.md` for full protocol.
 7. **Process health check (MANDATORY).** Run `~/.claude/hooks/process-health.sh check`. This detects orphaned Claude Code instances, stale VS Code extension hosts, resource pressure, and port conflicts. If orphans are found, run `process-health.sh cleanup` before starting work. If critical thresholds are hit (RAM < 2GB, disk > 85%), flag to the user immediately. **Do not skip this step** — orphaned processes from extension updates, crashed sessions, or multi-session work silently degrade the entire Droplet.
 8. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
 9. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
@@ -547,6 +656,7 @@ Before introducing any new tool, library, or service, check whether these solve 
 
 ### Core Development
 - **Node.js 22+ LTS** — Required runtime for all JS/TS projects. Managed via nvm on the Droplet (`nvm use 22`). Node 20 is available as fallback but EOL. Every new project's `package.json` must include `"engines": { "node": ">=22.0.0" }`.
+- **`@nexusbluedev/core`** — Core Platform SDK (private, GitHub Packages). Primitives, field registry, capability engine, orchestration. Every product app imports this. See "Private npm Packages (GitHub Packages)" section below for setup.
 - **Python** — Backend, scripting, automation, data pipelines
 - **Next.js + TypeScript** — Web applications, SSR/SSG, API routes
 - **HTML5 + CSS3 + Vanilla JS (ES5)** — Static web apps, PWAs, expo booth tools
@@ -561,6 +671,7 @@ Before introducing any new tool, library, or service, check whether these solve 
 ### Development Environment
 - **DigitalOcean Droplet (nexusblue-dev-hub)** — Primary dev environment (8 vCPU / 16 GB RAM / Ubuntu 22.04 LTS). All code and tools live here. Connect via VS Code Remote-SSH (`ssh nexusblue-dev`). No local installs beyond VS Code + SSH key.
 - **VS Code + Remote-SSH** — Primary editor, connected to Droplet
+- **Cloudflare Tunnel (`cloudflared`)** — Instant public HTTPS URLs for sandbox prototypes. No account needed. See Sandbox Preview section under Deployment Awareness.
 - **Git Bash** — Windows terminal for local scripts (Unix syntax on Windows — see Windows & OneDrive section)
 - **Chocolatey** — Windows package management (local machine setup only)
 - **OneDrive** — Business docs, assets, non-code files. Code projects moved to Droplet.
@@ -571,7 +682,8 @@ Before introducing any new tool, library, or service, check whether these solve 
 - **Grok** — Available for AI-assisted tasks
 
 ### Prototype & Testing Flow
-1. Develop on Droplet (VS Code Remote-SSH) → 2. Push to GitHub → 3. Vercel deploys via API token → 4. Share preview URL
+- **Sandbox prototypes (`~/sandbox/prototypes/`):** Dev server + Cloudflare Tunnel → instant public HTTPS URL. No git, no Vercel. See Sandbox Preview section under Deployment Awareness.
+- **Production projects (`~/dev/`):** Push to GitHub → Vercel auto-deploys → share preview/production URL.
 
 > **Note:** Vercel's GitHub auto-deploy integration and deploy hooks are NOT reliably triggered from the Droplet SSH environment. Use the Vercel REST API with a token instead (see Vercel deployment section below).
 
@@ -717,6 +829,43 @@ desktop.ini
 - **Auto-deploys on push to `main`.** Deploy time ~1-2 minutes.
 - **Cache busting:** Increment `?v=N` on ALL `<script>` and `<link>` tags AND bump `CACHE_NAME` in `sw.js` together when users need fresh files.
 - Enable Pages via: `gh api repos/[org]/[repo]/pages --method POST` with `{"source":{"branch":"main","path":"/"}}`
+
+### Sandbox Preview (Cloudflare Tunnel)
+
+Sandbox prototypes in `~/sandbox/prototypes/` need a way to be previewed without creating a git repo or Vercel project. **Cloudflare Tunnel is the standard method.**
+
+**How it works:**
+1. Start the dev server on any available port
+2. Run `cloudflared tunnel --url http://localhost:PORT`
+3. Cloudflare generates a temporary public HTTPS URL (`https://xxxxx.trycloudflare.com`)
+4. Share the URL — it proxies to the local dev server
+5. URL dies when the tunnel process is stopped
+
+**Standard commands:**
+```bash
+# Start dev server (use a non-conflicting port)
+cd ~/sandbox/prototypes/{name}
+npx next dev --port 3001 > /tmp/{name}-dev.log 2>&1 &
+
+# Start tunnel (use &> for combined stdout+stderr — URL appears in stderr)
+cloudflared tunnel --url http://localhost:3001 &>/tmp/{name}-tunnel.log &
+
+# Wait ~10s for tunnel to establish, then extract URL
+sleep 10 && grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/{name}-tunnel.log | head -1
+
+# When done — kill both
+pkill -f "next dev --port 3001"
+pkill -f "cloudflared tunnel"
+```
+
+**Rules:**
+- **Always use a specific port** (not 3000) to avoid conflicts with other dev servers
+- **Always verify the dev server is responding** before starting the tunnel (`curl -s -o /dev/null -w "%{http_code}" http://localhost:PORT`)
+- **Remove the default `src/app/page.tsx`** when using Next.js route groups like `(storefront)` — the default page takes priority over route group pages
+- **No account needed** — quick tunnels work without Cloudflare authentication
+- **URLs are temporary** — they die when the tunnel stops. Do not bookmark or share as permanent links
+- **Kill both processes when done** — dev servers and tunnels consume resources (see Droplet Health section)
+- Installed on the Droplet 2026-03-06: `cloudflared v2026.2.0` via `.deb` package
 
 ### Pre-Push Checklist
 1. `git remote -v` confirms origin is `NexusBlueDev` (not a personal account)
@@ -1402,6 +1551,86 @@ for (let i = 0; i < maxAttempts; i++) {
 
 ---
 
+## Private npm Packages (GitHub Packages)
+
+NexusBlue publishes shared packages to **GitHub Packages** (npm registry hosted on GitHub). This is the standard for all private packages in the `NexusBlueDev` org.
+
+### Published Packages
+
+| Package | Version | Repo | Purpose |
+|---------|---------|------|---------|
+| `@nexusbluedev/core` | 0.1.0 | nexusblue-core | Core Platform SDK — primitives, field registry, capabilities, orchestration |
+
+### Publishing a Package
+
+**Prerequisites:**
+- Package name scope MUST match the GitHub org: `@nexusbluedev/package-name` (NOT `@nexusblue/`)
+- Classic PAT (`ghp_`) with `write:packages` + `repo` scopes — **OAuth tokens (`gho_` from `gh auth`) CANNOT publish npm packages**
+- Repo must exist in `NexusBlueDev` org
+- Org Packages settings: "Private" checked under Package Creation (already configured)
+
+**Package setup (`package.json`):**
+```json
+{
+  "name": "@nexusbluedev/package-name",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}
+```
+
+**Auth setup (publisher repo `.npmrc` — gitignored):**
+```
+//npm.pkg.github.com/:_authToken=ghp_YOUR_CLASSIC_PAT
+@nexusbluedev:registry=https://npm.pkg.github.com
+```
+
+**Publish:** `npm publish` (runs `prepare` script → builds → publishes)
+
+### Consuming a Private Package
+
+**Project `.npmrc` (committed — token is interpolated, not hardcoded):**
+```
+@nexusbluedev:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NPM_TOKEN}
+```
+
+**Local dev:** Token in `~/.npmrc` (user-level, not committed):
+```
+//npm.pkg.github.com/:_authToken=ghp_YOUR_CLASSIC_PAT
+```
+
+**Vercel CI:** Set `NPM_TOKEN` env var on the Vercel project (production + preview + development targets) with the same classic PAT value.
+
+**GitHub Actions CI:** Set `NPM_TOKEN` as a repo secret, add to workflow:
+```yaml
+env:
+  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+### Rules
+
+- **Scope = org name.** `@nexusbluedev` maps to `NexusBlueDev` org. GitHub Packages enforces this — mismatched scope returns 403 `create_package`.
+- **Classic PATs only for publishing.** OAuth tokens from `gh auth` and fine-grained PATs do not have npm publish permissions. Use classic PATs with `write:packages` scope.
+- **Token interpolation pattern.** Project `.npmrc` uses `${NPM_TOKEN}` — actual value lives in `~/.npmrc` (local) or env var (CI). Token never committed.
+- **`.npmrc` in publisher repo is gitignored.** It contains the raw PAT. Add `.npmrc` to `.gitignore`.
+- **`.npmrc` in consumer repo is committed.** It only contains the `${NPM_TOKEN}` reference, no secrets.
+- **No expiration recommended** for the classic PAT — it's scoped to `write:packages` + `repo` and lives only on the Droplet. Rotate if compromised.
+- **First publish creates the package.** Subsequent publishes just add versions. The org admin who creates the first version must have admin access on the source repo.
+
+### Version Bumping
+
+```bash
+# In the package repo (e.g., nexusblue-core):
+npm version patch   # 0.1.0 → 0.1.1
+npm publish          # builds + publishes
+
+# In the consumer repo (e.g., nexusblue-website):
+npm update @nexusbluedev/core
+```
+
+---
+
 ## Test Account Seeding Standard (Supabase Auth Projects)
 
 Every project with Supabase Auth has two distinct types of test accounts. These are separate concerns and must not be conflated.
@@ -1904,7 +2133,7 @@ When multiple Claude Code sessions run simultaneously across NexusBlue projects,
 2. **Declare resources before building** — migrations, flags, deps in plan phase
 3. **Log cross-project bugs, don't fix them** — use `~/.claude/cross-project-issues.md`
 4. **Migrations are reserved, not first-come-first-served** — claim in `~/.claude/agent-reservations.json`
-5. **TTL is crash recovery** — 24h interactive, 2h CI, auto-cleaned by boundary guard hook
+5. **TTL is crash recovery** — process-liveness (PID check) is primary; 24h age-based fallback for sessions without PID; auto-cleaned by boundary guard hook and `process-health.sh`
 6. **Read-only access is always free** — boundary guard only warns on writes
 
 ### Runtime Files
@@ -1917,10 +2146,13 @@ When multiple Claude Code sessions run simultaneously across NexusBlue projects,
 
 ### Session Lifecycle
 
-1. **Register** — at session start, claim project in `agent-reservations.json` (step 6b of Session Start Protocol)
+1. **Register** — at session start, claim project in `agent-reservations.json` with `pid` field (step 6b of Session Start Protocol). The PID enables automatic expiration when the process dies. Session format:
+   ```json
+   { "project": "name", "branch": "dev", "status": "planning", "started_at": "ISO8601", "pid": 12345, "description": "..." }
+   ```
 2. **Reserve** — on plan approval, claim migration numbers and declare resources
 3. **Build** — write only to your project; read any project freely; log cross-project bugs
-4. **Release** — at session end, remove session and reservations (step 1b of Session End Protocol)
+4. **Release** — at session end, remove session and reservations (step 1b of Session End Protocol). If session dies ungracefully (SIGTERM, crash), `process-health.sh` and `boundary-guard.sh` auto-expire the session via PID liveness check.
 
 ### Shared Database Coordination
 
@@ -2074,6 +2306,9 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v6.0 — **Agent Isolation & Resource Reservation Protocol (AIRP).** File-based coordination layer at `~/.claude/agent-reservations.json` prevents multi-session conflicts. Core: one project per session, migration number reservations, cross-project issue queue (`~/.claude/cross-project-issues.md`), boundary guard hook (`~/.claude/hooks/boundary-guard.sh`) warns on cross-project writes (advisory v1.0, enforcement in v2.0). Session Start Protocol step 6b: register session and check for conflicts. Session End Protocol step 1b: release reservations. Commit Discipline: "claim before commit" for migrations. Shared DB coordination: beers-biz-dayton cannot claim migrations directly on nexusblue-website's DB. Full standard at `docs/AGENT_ISOLATION_STANDARD.md`. TTL-based crash recovery (24h interactive, 2h CI). Prerequisite for Phase 2 autonomous agents. Origin: 2026-03-04 — user request for agent boundary enforcement before enabling autonomous sandbox mode
 - v6.2 — **Lessons Learned Protocol + Environment Clarity.** Three process changes: (1) Session End Protocol step 1 now requires "Lessons Learned" subsection in HANDOFF.md session entries when errors/blockers occurred — documenting root cause and prevention rule. (2) Docs agent checks 11-12 added: verify lessons are documented if failures happened, verify HANDOFF.md declares branch/environment/human-action-required. (3) Architect review check 7 added: pre-flight scan of CLAUDE.md gotchas and MEMORY.md to flag if current plan risks repeating a known mistake. (4) HANDOFF.md standard structure now includes "Environment Status" section with branch, preview/production URLs, and explicit human action required. Origin: 2026-03-04 — user request after Vercel deploy cascade: "I want to make sure that if anything fails all agents know globally they need to track lessons learned and fixes"
 - v6.1 — **Vercel 250MB serverless limit + outputFileTracingExcludes** (CRITICAL gotcha). `serverExternalPackages` does NOT prevent Vercel's NFT from copying native binaries into function bundles. Use `outputFileTracingExcludes` (top-level config, NOT experimental) to actually exclude large packages. Applied for `@tensorflow/tfjs-node` (383MB) on nexusblue-website — BioGate ML routes disabled on Vercel, need Droplet API. Also documents lesson: never batch-commit incomplete WIP to dev — use sandbox/* branches. Origin: 2026-03-04 — BioGate Phase 2 blocked ALL nexusblue-website deploys for multiple sessions
+- v6.7 — **Private npm Packages (GitHub Packages) standard.** New section documenting the full publishing and consuming workflow for private `@nexusbluedev/*` packages on GitHub Packages. Covers: scope-must-match-org rule (403 `create_package` if mismatched), classic PAT requirement (`gho_` OAuth tokens from `gh auth` cannot publish npm), `.npmrc` token interpolation pattern (`${NPM_TOKEN}` in committed file, actual value in `~/.npmrc` or CI env var), Vercel/GHA CI wiring, version bumping workflow. Updated "How Products Are Built" to reference `@nexusbluedev/core` (correct published name). Added `@nexusbluedev/core` to Existing Stack → Core Development. Published packages registry table (currently: `@nexusbluedev/core@0.1.0`). Origin: 2026-03-06 — publishing `@nexusblue/core` failed with 403 because scope didn't match org; `gh auth` token failed because OAuth can't publish npm; three attempts before identifying both root causes
+- v6.6 — **Sandbox preview via Cloudflare Tunnel.** Installed `cloudflared` on the Droplet as the standard method for previewing sandbox prototypes without git or Vercel. `cloudflared tunnel --url http://localhost:PORT` generates a temporary public HTTPS URL (trycloudflare.com) — no account needed, instant, dies when stopped. Added to: Existing Stack (Development Environment), Prototype & Testing Flow, new "Sandbox Preview" section under Deployment Awareness, and sandbox CLAUDE.md. Also documented gotcha: Next.js route groups (`(storefront)`) are overridden by a default `src/app/page.tsx` — must delete it. Origin: 2026-03-06 — akguys-platform prototype needed client-visible preview from sandbox
+- v6.5 — **AIRP session-level cleanup and PID-based expiration.** Fixed critical gap: SIGTERM'd sessions left orphaned AIRP reservations, dangling `/tmp/claude-1000/` task symlinks, and stale `~/.claude/projects/` session dirs — blocking new sessions from opening. Root cause: (1) sessions registered without `pid` or `expires_at_epoch` so TTL cleanup never fired, (2) `process-health.sh` only handled OS processes not session state, (3) `boundary-guard.sh` didn't recognize `building` status. Fix: upgraded `process-health.sh` with `session-cleanup` action (AIRP expiration, dangling symlink removal, stale task/session dir cleanup, extension log pruning). Upgraded `boundary-guard.sh` TTL logic with 3-strategy expiration (PID liveness → explicit TTL → 24h age fallback). Added `building` to boundary-guard session status matching. Global CLAUDE.md AIRP section now requires agents to include `pid` field on session registration. Runbook at `~/ops/runbooks/session-cleanup.md`. Incident postmortem at `~/ops/incidents/2026-03-06-airp-session-cleanup-gap/`. Cleaned 1 stale AIRP session, 28 dangling symlinks, 49 orphaned session dirs. Origin: 2026-03-06 — nexusblue-website blocked by stale `building` reservation after Contact Backbone session SIGTERM'd
 - v6.4 — **Process hygiene automation — orphan detection, cleanup, and prevention.** Created `~/.claude/hooks/process-health.sh` — detects orphaned Claude Code instances, stale VS Code extension hosts, resource pressure, and port conflicts. Three modes: `check` (session start diagnostics), `cleanup` (kill orphans + clean logs), `status` (one-liner for dashboards). Cron job runs cleanup every 6 hours + at boot (`~/logs/process-health.log`). Added mandatory step 7 to Session Start Protocol (process health check) and step 8 to Session End Protocol (process cleanup). Updated Droplet Health section to document extension update orphan pattern and reference the automated script. Root cause: Claude Code extension auto-update at 01:02 AM orphaned 3 claude processes (1GB RAM, 140 CPU-minutes) and caused 23,060 file watcher shutdown warnings — VS Code couldn't open folders due to accumulated resource pressure. Not caught in prior session because the manual `free -h` health check doesn't detect orphaned processes by PID. Origin: 2026-03-05 — user unable to open folders in VS Code
 - v6.3 — **Next.js `after()` + client polling anti-pattern** (gotcha). Single `setTimeout` polling for `after()` background work results always fires too early (10s vs 30-60s actual). Combined with clearing old data before regeneration, the premature poll returns `[]` which poisons React lazy-loading guards (`if (!data)` treats `[]` as truthy). Fix: poll the status field in a loop until completed/failed, clear state to `null` (not `[]`) before starting, put loading reset in `finally`. Origin: 2026-03-04 — WebMap "Regenerate Recs" appeared broken on all scans
 - v5.9 — **Centralized project library with `project_slug` attribution.** Added `project_slug TEXT` column to the portable `project_library` schema. Nullable — NULL means "belongs to DB owner project" (backwards compatible). Shared-DB projects (e.g., beers-biz-dayton using nexusblue-website's DB) MUST set `project_slug` on every INSERT so entries appear under the correct project on the Library page. Updated UNIQUE constraint from `(title)` to `(title, project_slug)` — allows same title across projects sharing a DB. Updated aggregation layer (`data.ts`) to use DB-level `project_slug` when available, fall back to app-layer attribution for older DBs. Added NB Retail Scanner to portal client config. Added CI `docs-freshness` job to nexusblue-website (was missing). Session End Protocol step 4 upgraded to MANDATORY with shared-DB documentation. Origin: 2026-03-03 — Library page showed only enterprise entries for Beers & Biz and NB Retail Scanner; retail scanner's 15 entries were invisible (no PORTAL_ config); beers-biz entries indistinguishable from nexusblue-website entries (no project_slug column)
