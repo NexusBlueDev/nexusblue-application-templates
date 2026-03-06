@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 6.7**
+**Version: 6.8**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -186,7 +186,7 @@ At the end of every session or when the user signals wrapping up:
 7. **Deploy is automatic** — Vercel-hosted projects auto-deploy on push via GitHub integration. No manual deploy step needed. Only use `scripts/deploy.sh` as a fallback if auto-deploy fails.
 8. **Process cleanup.** Run `~/.claude/hooks/process-health.sh cleanup` to kill any orphaned Claude Code instances and clean stale VS Code logs. This prevents process accumulation between sessions.
 9. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
-9. **Testing summary (MANDATORY after every push).** After each push, output a clear testing block for the human:
+10. **Testing summary (MANDATORY after every push).** After each push, output a clear testing block for the human:
 
 ```
 ## Where to Test
@@ -200,6 +200,44 @@ At the end of every session or when the user signals wrapping up:
 Use production credentials for preview (same database). Use `nexusblue-admin@nexusblue.dev` / `NxB_dev_2026!` for super-admin portal access. This block must appear in the conversation output — not buried in HANDOFF.md. The human should be able to copy-paste the URL and go.
 
 > **IMPORTANT — Docs gate applies to ALL pushes, not just session-end.** Any time you `git push` — mid-session or at session close — the docs gate hook will block unless `.docs-verified` exists. The pattern: finish work → run docs agent → fix gaps → `touch .docs-verified` → commit → push. The hook deletes the flag after each push, so it must be re-created before the next push.
+
+---
+
+## "What's Next" Block (MANDATORY — After Every Task Completion)
+
+Every time a task, feature, or significant unit of work is completed — whether mid-session or at session end — output a **"What's Next" block** before moving on. This is how the human stays in control of direction. **Never skip this.**
+
+**Structure (all 4 parts required):**
+
+1. **What was done** — brief summary of the completed work
+2. **Remaining work** — backlog of known tasks, ordered by priority
+3. **"I want to do:"** — state the single recommended next action with reasoning for why it's the right move now
+4. **"I am ready, do you agree with what I want to do?"** — always end with this exact prompt. Wait for confirmation before proceeding.
+
+**Example:**
+
+```
+## What's Next
+
+**Done:** Published @nexusbluedev/core to GitHub Packages, wired Vercel NPM_TOKEN.
+
+**Remaining:**
+1. Migrate src/lib/core/*.ts to use SDK imports instead of direct Supabase queries
+2. Merge dev → main for production deploy
+3. Regenerate GitHub PAT (exposed in conversation)
+
+**I want to do:** Merge dev → main — the SDK integration is stable on preview,
+all tests pass, and production should have the updated dependency.
+
+**I am ready, do you agree with what I want to do?**
+```
+
+**Rules:**
+- This block appears in **conversation output** — not buried in HANDOFF.md or TODO.md
+- Wait for explicit confirmation ("yes", "go", "do it") before starting the next task
+- If the human redirects to a different task, follow their direction — the block is a proposal, not a command
+- Do NOT skip this block and autonomously start the next task — the human decides what's next
+- Applies to mid-session milestones AND session-end summaries
 
 ---
 
@@ -2306,6 +2344,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v6.0 — **Agent Isolation & Resource Reservation Protocol (AIRP).** File-based coordination layer at `~/.claude/agent-reservations.json` prevents multi-session conflicts. Core: one project per session, migration number reservations, cross-project issue queue (`~/.claude/cross-project-issues.md`), boundary guard hook (`~/.claude/hooks/boundary-guard.sh`) warns on cross-project writes (advisory v1.0, enforcement in v2.0). Session Start Protocol step 6b: register session and check for conflicts. Session End Protocol step 1b: release reservations. Commit Discipline: "claim before commit" for migrations. Shared DB coordination: beers-biz-dayton cannot claim migrations directly on nexusblue-website's DB. Full standard at `docs/AGENT_ISOLATION_STANDARD.md`. TTL-based crash recovery (24h interactive, 2h CI). Prerequisite for Phase 2 autonomous agents. Origin: 2026-03-04 — user request for agent boundary enforcement before enabling autonomous sandbox mode
 - v6.2 — **Lessons Learned Protocol + Environment Clarity.** Three process changes: (1) Session End Protocol step 1 now requires "Lessons Learned" subsection in HANDOFF.md session entries when errors/blockers occurred — documenting root cause and prevention rule. (2) Docs agent checks 11-12 added: verify lessons are documented if failures happened, verify HANDOFF.md declares branch/environment/human-action-required. (3) Architect review check 7 added: pre-flight scan of CLAUDE.md gotchas and MEMORY.md to flag if current plan risks repeating a known mistake. (4) HANDOFF.md standard structure now includes "Environment Status" section with branch, preview/production URLs, and explicit human action required. Origin: 2026-03-04 — user request after Vercel deploy cascade: "I want to make sure that if anything fails all agents know globally they need to track lessons learned and fixes"
 - v6.1 — **Vercel 250MB serverless limit + outputFileTracingExcludes** (CRITICAL gotcha). `serverExternalPackages` does NOT prevent Vercel's NFT from copying native binaries into function bundles. Use `outputFileTracingExcludes` (top-level config, NOT experimental) to actually exclude large packages. Applied for `@tensorflow/tfjs-node` (383MB) on nexusblue-website — BioGate ML routes disabled on Vercel, need Droplet API. Also documents lesson: never batch-commit incomplete WIP to dev — use sandbox/* branches. Origin: 2026-03-04 — BioGate Phase 2 blocked ALL nexusblue-website deploys for multiple sessions
+- v6.8 — **"What's Next" block — mandatory task completion pattern.** New top-level section added between Session End Protocol and Step-by-Step Mode. Every task completion (mid-session or session-end) must output a 4-part block: (1) What was done, (2) Remaining work (backlog), (3) "I want to do:" with recommended next action and reasoning, (4) "I am ready, do you agree with what I want to do?" — explicit confirmation prompt. Claude must WAIT for human approval before starting the next task. Previously existed only in nexusblue-website MEMORY.md User Preferences — elevated to global standard because it was skipped when not enforced globally. Origin: 2026-03-06 — user corrected multiple skips of the confirmation pattern during npm publish session
 - v6.7 — **Private npm Packages (GitHub Packages) standard.** New section documenting the full publishing and consuming workflow for private `@nexusbluedev/*` packages on GitHub Packages. Covers: scope-must-match-org rule (403 `create_package` if mismatched), classic PAT requirement (`gho_` OAuth tokens from `gh auth` cannot publish npm), `.npmrc` token interpolation pattern (`${NPM_TOKEN}` in committed file, actual value in `~/.npmrc` or CI env var), Vercel/GHA CI wiring, version bumping workflow. Updated "How Products Are Built" to reference `@nexusbluedev/core` (correct published name). Added `@nexusbluedev/core` to Existing Stack → Core Development. Published packages registry table (currently: `@nexusbluedev/core@0.1.0`). Origin: 2026-03-06 — publishing `@nexusblue/core` failed with 403 because scope didn't match org; `gh auth` token failed because OAuth can't publish npm; three attempts before identifying both root causes
 - v6.6 — **Sandbox preview via Cloudflare Tunnel.** Installed `cloudflared` on the Droplet as the standard method for previewing sandbox prototypes without git or Vercel. `cloudflared tunnel --url http://localhost:PORT` generates a temporary public HTTPS URL (trycloudflare.com) — no account needed, instant, dies when stopped. Added to: Existing Stack (Development Environment), Prototype & Testing Flow, new "Sandbox Preview" section under Deployment Awareness, and sandbox CLAUDE.md. Also documented gotcha: Next.js route groups (`(storefront)`) are overridden by a default `src/app/page.tsx` — must delete it. Origin: 2026-03-06 — akguys-platform prototype needed client-visible preview from sandbox
 - v6.5 — **AIRP session-level cleanup and PID-based expiration.** Fixed critical gap: SIGTERM'd sessions left orphaned AIRP reservations, dangling `/tmp/claude-1000/` task symlinks, and stale `~/.claude/projects/` session dirs — blocking new sessions from opening. Root cause: (1) sessions registered without `pid` or `expires_at_epoch` so TTL cleanup never fired, (2) `process-health.sh` only handled OS processes not session state, (3) `boundary-guard.sh` didn't recognize `building` status. Fix: upgraded `process-health.sh` with `session-cleanup` action (AIRP expiration, dangling symlink removal, stale task/session dir cleanup, extension log pruning). Upgraded `boundary-guard.sh` TTL logic with 3-strategy expiration (PID liveness → explicit TTL → 24h age fallback). Added `building` to boundary-guard session status matching. Global CLAUDE.md AIRP section now requires agents to include `pid` field on session registration. Runbook at `~/ops/runbooks/session-cleanup.md`. Incident postmortem at `~/ops/incidents/2026-03-06-airp-session-cleanup-gap/`. Cleaned 1 stale AIRP session, 28 dangling symlinks, 49 orphaned session dirs. Origin: 2026-03-06 — nexusblue-website blocked by stale `building` reservation after Contact Backbone session SIGTERM'd
