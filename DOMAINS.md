@@ -1,6 +1,6 @@
 # Domain Registry — nexusblue.ai
 
-> Last updated: 2026-03-04
+> Last updated: 2026-03-06
 
 ## DNS Setup
 - **Provider:** Namecheap
@@ -18,6 +18,7 @@
 | `cain-website.nexusblue.ai` | cain-website-022026 | dev | Cain Tax Advisors — staging/testing | 2026-03-04 |
 | `pet-scheduler.nexusblue.ai` | pet-scheduler | dev | Pet Scheduler — staging/testing | 2026-03-04 |
 | `sectorius-website.nexusblue.ai` | sectorius-website | dev | Sectorius — staging/testing | 2026-03-04 |
+| `forge.nexusblue.ai` | nexusblue-forgeai | dev | ForgeAI Engineering Platform — staging/testing | 2026-03-06 |
 
 ## Production Domains
 
@@ -43,6 +44,7 @@
 | `pet-scheduler` | pet_scheduler (preview) |
 | `beers-biz-checkin` | beers-biz-dayton |
 | `sectorius-website` | sectorius-website |
+| `forge` | nexusblue-forgeai |
 
 ## How to Add a New Project
 
