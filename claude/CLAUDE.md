@@ -182,6 +182,13 @@ When a session begins:
      -d "{\"query\": \"SELECT category, message FROM setup_feedback WHERE project_slug = '${SLUG}' AND status = 'new' ORDER BY created_at DESC LIMIT 5\"}"
    ```
    If there are pending needs that block your planned work, flag them to the human. If there is new feedback, acknowledge it and factor it into your plan. If the project has no Setup Copilot session yet, skip this step.
+
+   **Session heartbeat:** Also mark the session as active so the dashboard shows a live "Claude active" indicator:
+   ```bash
+   curl -s -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
+     -H "Authorization: Bearer $ACCESS_TOKEN" -H "Content-Type: application/json" \
+     -d "{\"query\": \"UPDATE setup_sessions SET status = 'active', last_activity = now() WHERE project_slug = '${SLUG}' AND status != 'completed'\"}"
+   ```
 9. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
 10. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
 11. **Start working.** Don't wait for confirmation on obvious next steps.
@@ -215,14 +222,24 @@ At the end of every session or when the user signals wrapping up:
    - **Resolve blockers** the human has unblocked: `UPDATE setup_blockers SET status = 'resolved', resolution = '...', resolved_at = now() WHERE project_slug = '${SLUG}' AND title = '...'`
    - **Mark feedback as read:** `UPDATE setup_feedback SET status = 'reviewed' WHERE project_slug = '${SLUG}' AND status = 'new'`
    - **Update phase progress:** `UPDATE setup_roadmap_phases SET completed_tasks = (SELECT count(*) FROM setup_roadmap_tasks WHERE phase_id = setup_roadmap_phases.id AND status = 'done') WHERE project_slug = '${SLUG}'`
+   - **Deactivate session heartbeat:** `UPDATE setup_sessions SET status = 'paused', last_activity = now() WHERE project_slug = '${SLUG}' AND status = 'active'`
 
    If the project has no Setup Copilot session yet and you did significant work, create one:
    ```sql
    -- Check first: SELECT id FROM setup_sessions WHERE project_slug = 'SLUG' LIMIT 1
-   -- If none exists:
-   INSERT INTO setup_sessions (project_slug, status) VALUES ('SLUG', 'active') RETURNING id;
+   -- If none exists (dev project):
+   INSERT INTO setup_sessions (project_slug, status, workspace_type, project_path) VALUES ('SLUG', 'active', 'dev', '~/dev/SLUG') RETURNING id;
+   -- If none exists (sandbox prototype):
+   INSERT INTO setup_sessions (project_slug, status, workspace_type, project_path) VALUES ('SLUG', 'active', 'sandbox', '~/sandbox/prototypes/SLUG') RETURNING id;
    ```
-   Skip this step only for projects in `~/ops/`, `~/scripts/`, `~/research/`, or `~/clients/`. Both `~/dev/` and `~/sandbox/` projects are tracked. When creating a new sandbox session, use `workspace_type = 'sandbox'`.
+   Skip this step only for projects in `~/ops/`, `~/scripts/`, `~/research/`, or `~/clients/`. Both `~/dev/` and `~/sandbox/` projects are tracked.
+
+   **Push-as-you-go (IMPORTANT):** Do NOT batch all updates to session end. Push updates to Setup Copilot **as they happen** throughout the session:
+   - When you complete a roadmap task → mark it done immediately
+   - When you discover a new human need → insert it immediately
+   - When you resolve a blocker → update it immediately
+   - When you hit a natural breakpoint (feature complete, "What's Next" block) → check for new feedback from the human
+   This keeps the dashboard live and lets the human see progress in real time at `setup.nexusblue.ai`.
 6. **Run docs agent (MANDATORY GATE — enforced by hook)** — invoke the documentation enforcement agent (see Agent Orchestration Standard) to verify all documents are current. Fix any gaps it finds. **This step MUST complete before step 7.** After the docs agent returns PASS, run `touch .docs-verified` to unlock the push gate. If GAPS FOUND, fix them and re-run until PASS. The PreToolUse hook on `git push` will block if this step is skipped (see Docs Gate Hook section).
 7. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions. The `git push` will be blocked by the docs gate hook if `.docs-verified` is missing.
 8. **Deploy is automatic** — Vercel-hosted projects auto-deploy on push via GitHub integration. No manual deploy step needed. Only use `scripts/deploy.sh` as a fallback if auto-deploy fails.
