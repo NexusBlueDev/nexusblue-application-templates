@@ -162,9 +162,29 @@ When a session begins:
 6. **Verify git remote.** Run `git remote -v`. The origin MUST point to a `NexusBlueDev` repo (`https://github.com/NexusBlueDev/...`). If it points to a personal account or any other org, **stop and fix it** before doing any work: `git remote set-url origin https://github.com/NexusBlueDev/REPO-NAME.git`. This prevents code from being pushed to the wrong repo.
 6b. **AIRP registration (if multi-session work is active).** Check `~/.claude/agent-reservations.json` for active sessions on this project. If another session exists, warn the human and proceed only if approved. Register this session with `status: planning` and **include `pid` field** (your Claude Code process PID — obtain via `echo $PPID` or walk the process tree). The PID enables automatic cleanup when a session dies ungracefully. Note any cross-project issues in `~/.claude/cross-project-issues.md` that target this project. See `docs/AGENT_ISOLATION_STANDARD.md` for full protocol.
 7. **Process health check (MANDATORY).** Run `~/.claude/hooks/process-health.sh check`. This detects orphaned Claude Code instances, stale VS Code extension hosts, resource pressure, and port conflicts. If orphans are found, run `process-health.sh cleanup` before starting work. If critical thresholds are hit (RAM < 2GB, disk > 85%), flag to the user immediately. **Do not skip this step** — orphaned processes from extension updates, crashed sessions, or multi-session work silently degrade the entire Droplet.
-8. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
-9. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
-10. **Start working.** Don't wait for confirmation on obvious next steps.
+8. **Check Setup Copilot (MANDATORY for projects in `~/dev/`).** Query the shared Supabase DB for pending items the human has flagged or that prior sessions created. This is how the human communicates back to you between sessions — through needs, blockers, and feedback in the dashboard at `setup.nexusblue.ai`.
+   ```bash
+   # Quick check — run via Supabase Management API
+   PROJECT_REF="lbmxueowhpecoqlyhdcs"
+   ACCESS_TOKEN=$(grep '^SUPABASE_ACCESS_TOKEN=' ~/.env.projects/setup-copilot.env 2>/dev/null | cut -d= -f2- || grep '^SUPABASE_ACCESS_TOKEN=' /home/nexusblue/dev/setup-copilot/.env.local | cut -d= -f2-)
+   SLUG="PROJECT-SLUG-HERE"
+   # Pending needs (things the human must do before you can proceed)
+   curl -s -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
+     -H "Authorization: Bearer $ACCESS_TOKEN" -H "Content-Type: application/json" \
+     -d "{\"query\": \"SELECT label, service, why_now FROM setup_needs WHERE project_slug = '${SLUG}' AND status = 'pending' ORDER BY priority LIMIT 10\"}"
+   # Open blockers
+   curl -s -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
+     -H "Authorization: Bearer $ACCESS_TOKEN" -H "Content-Type: application/json" \
+     -d "{\"query\": \"SELECT title, description, next_action FROM setup_blockers WHERE project_slug = '${SLUG}' AND status = 'open' ORDER BY priority LIMIT 10\"}"
+   # Unread feedback from the human
+   curl -s -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
+     -H "Authorization: Bearer $ACCESS_TOKEN" -H "Content-Type: application/json" \
+     -d "{\"query\": \"SELECT category, message FROM setup_feedback WHERE project_slug = '${SLUG}' AND status = 'new' ORDER BY created_at DESC LIMIT 5\"}"
+   ```
+   If there are pending needs that block your planned work, flag them to the human. If there is new feedback, acknowledge it and factor it into your plan. If the project has no Setup Copilot session yet, skip this step.
+9. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
+10. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
+11. **Start working.** Don't wait for confirmation on obvious next steps.
 
 > **New Project Rule:** When creating a brand new project (no existing HANDOFF.md, no git history), **do NOT explore or read other projects on the Droplet.** You already know the stack, conventions, and templates from this global CLAUDE.md. Scaffold from knowledge, not from scanning unrelated repos. Reading other projects wastes time, risks context pollution, and adds no value when the standards are documented here. Only reference another project if the user explicitly asks you to copy a specific pattern from it.
 
@@ -181,12 +201,34 @@ At the end of every session or when the user signals wrapping up:
 4. **Update `project_library` (MANDATORY)** — if new features, tools, integrations, or architecture were shipped this session, INSERT rows into the project's `project_library` table via Supabase Management API. **If the table doesn't exist yet**, create it first using the portable schema at `/home/nexusblue/dev/nexusblue-website/supabase/cross-project/project_library_table.sql` (also save a copy to the project's `supabase/migrations/create_project_library.sql`). Categories: `feature`, `tool`, `integration`, `architecture`, `infrastructure`, `standard`, `highlight`, `reference`. Include title, summary (one line for card), content_md (markdown detail with ## heading and bullet points), tags (TEXT[]), and `project_slug` (the project's slug from `dev_projects`). Use `ON CONFLICT (title, project_slug) DO NOTHING` for idempotency. **Every shipped feature must have a library entry** — the Command Center Library page aggregates these across all projects. Skip this step only for projects without a Supabase database.
    **Shared-DB projects:** If this project shares another project's Supabase database (e.g., beers-biz-dayton shares nexusblue-website's DB), you MUST include `project_slug` in every INSERT. Without it, entries are attributed to the DB owner project and are invisible under this project's filter on the Library page.
 4b. **Verify Command Center registration** — if this is the first session for a new project, INSERT into the central `dev_projects` table so it appears on the Environment page. See Command Center Registration section. If the project is already registered, update `live_url`/`preview_url`/`status` if they changed this session.
-5. **Run docs agent (MANDATORY GATE — enforced by hook)** — invoke the documentation enforcement agent (see Agent Orchestration Standard) to verify all documents are current. Fix any gaps it finds. **This step MUST complete before step 6.** After the docs agent returns PASS, run `touch .docs-verified` to unlock the push gate. If GAPS FOUND, fix them and re-run until PASS. The PreToolUse hook on `git push` will block if this step is skipped (see Docs Gate Hook section).
-6. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions. The `git push` will be blocked by the docs gate hook if `.docs-verified` is missing.
-7. **Deploy is automatic** — Vercel-hosted projects auto-deploy on push via GitHub integration. No manual deploy step needed. Only use `scripts/deploy.sh` as a fallback if auto-deploy fails.
-8. **Process cleanup.** Run `~/.claude/hooks/process-health.sh cleanup` to kill any orphaned Claude Code instances and clean stale VS Code logs. This prevents process accumulation between sessions.
-9. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
-10. **Testing summary (MANDATORY after every push).** After each push, output a clear testing block for the human:
+5. **Update Setup Copilot (MANDATORY for projects in `~/dev/`).** Push session results to the shared dashboard so the human sees progress at `setup.nexusblue.ai`. This is how you communicate back to the human between sessions.
+   ```bash
+   PROJECT_REF="lbmxueowhpecoqlyhdcs"
+   ACCESS_TOKEN=$(grep '^SUPABASE_ACCESS_TOKEN=' ~/.env.projects/setup-copilot.env 2>/dev/null | cut -d= -f2- || grep '^SUPABASE_ACCESS_TOKEN=' /home/nexusblue/dev/setup-copilot/.env.local | cut -d= -f2-)
+   SLUG="PROJECT-SLUG-HERE"
+   SESSION_ID="SESSION-UUID"  # from setup_sessions for this project
+   ```
+   **What to push:**
+   - **Mark completed roadmap tasks as done:** `UPDATE setup_roadmap_tasks SET status = 'done', completed_at = now() WHERE project_slug = '${SLUG}' AND task_name = '...'`
+   - **Add new needs discovered** (things the human must do): `INSERT INTO setup_needs (session_id, project_slug, env_key, service, label, why_now, instructions, priority, status) VALUES (...)`
+   - **Add new blockers** (things blocking progress): `INSERT INTO setup_blockers (session_id, project_slug, type, title, description, next_action, status, priority) VALUES (...)`
+   - **Resolve blockers** the human has unblocked: `UPDATE setup_blockers SET status = 'resolved', resolution = '...', resolved_at = now() WHERE project_slug = '${SLUG}' AND title = '...'`
+   - **Mark feedback as read:** `UPDATE setup_feedback SET status = 'reviewed' WHERE project_slug = '${SLUG}' AND status = 'new'`
+   - **Update phase progress:** `UPDATE setup_roadmap_phases SET completed_tasks = (SELECT count(*) FROM setup_roadmap_tasks WHERE phase_id = setup_roadmap_phases.id AND status = 'done') WHERE project_slug = '${SLUG}'`
+
+   If the project has no Setup Copilot session yet and you did significant work, create one:
+   ```sql
+   -- Check first: SELECT id FROM setup_sessions WHERE project_slug = 'SLUG' LIMIT 1
+   -- If none exists:
+   INSERT INTO setup_sessions (project_slug, status) VALUES ('SLUG', 'active') RETURNING id;
+   ```
+   Skip this step only for projects without a `~/dev/` directory (sandbox, ops, scripts).
+6. **Run docs agent (MANDATORY GATE — enforced by hook)** — invoke the documentation enforcement agent (see Agent Orchestration Standard) to verify all documents are current. Fix any gaps it finds. **This step MUST complete before step 7.** After the docs agent returns PASS, run `touch .docs-verified` to unlock the push gate. If GAPS FOUND, fix them and re-run until PASS. The PreToolUse hook on `git push` will block if this step is skipped (see Docs Gate Hook section).
+7. **Commit and push** — task is NOT complete until GitHub is updated. No exceptions. The `git push` will be blocked by the docs gate hook if `.docs-verified` is missing.
+8. **Deploy is automatic** — Vercel-hosted projects auto-deploy on push via GitHub integration. No manual deploy step needed. Only use `scripts/deploy.sh` as a fallback if auto-deploy fails.
+9. **Process cleanup.** Run `~/.claude/hooks/process-health.sh cleanup` to kill any orphaned Claude Code instances and clean stale VS Code logs. This prevents process accumulation between sessions.
+10. **Summarize the session** in 3-5 lines: what changed, what's ready, what's next.
+11. **Testing summary (MANDATORY after every push).** After each push, output a clear testing block for the human:
 
 ```
 ## Where to Test
@@ -198,6 +240,13 @@ At the end of every session or when the user signals wrapping up:
 ```
 
 Use production credentials for preview (same database). Use `nexusblue-admin@nexusblue.dev` / `NxB_dev_2026!` for super-admin portal access. This block must appear in the conversation output — not buried in HANDOFF.md. The human should be able to copy-paste the URL and go.
+
+**CRITICAL — Testing URL rules:**
+- **NEVER give `localhost` URLs for testing.** The human accesses the Droplet via VS Code Remote-SSH — `localhost` is unreachable from their browser.
+- **Vercel-hosted projects:** Use the Vercel preview or production URL.
+- **Droplet-hosted projects:** Start a Cloudflare Tunnel (`cloudflared tunnel --url http://localhost:PORT`) and give the `*.trycloudflare.com` URL.
+- **GitHub Pages projects:** Use the `*.github.io` URL.
+- **"What to verify" must be numbered items** with specific actions (click X, see Y), not prose paragraphs.
 
 > **IMPORTANT — Docs gate applies to ALL pushes, not just session-end.** Any time you `git push` — mid-session or at session close — the docs gate hook will block unless `.docs-verified` exists. The pattern: finish work → run docs agent → fix gaps → `touch .docs-verified` → commit → push. The hook deletes the flag after each push, so it must be re-created before the next push.
 
