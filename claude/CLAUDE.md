@@ -717,7 +717,7 @@ Reference implementations: **WebMap** (nexusblue-website) and **AppVault** (nexu
 
 **Structure before code:**
 - `docs/modules/{module}/` README + ARCHITECTURE + SCHEMA must exist before a line of implementation code is written
-- Billing unit and role capability matrix must be defined before the migration is written
+- Billing unit, role capability matrix, and **ownership pattern per table** must be defined before the migration is written
 
 **AI-first:**
 - AI is the primary interface — humans approve outcomes, not configure inputs
@@ -739,8 +739,16 @@ Reference implementations: **WebMap** (nexusblue-website) and **AppVault** (nexu
 - NexusBlue overrides any org via `feature_overrides` table (ceiling control)
 - `module_defaults` = NexusBlue-owned source of truth; `module_permissions` = org admin runtime config
 
+**Ownership model (two patterns — declare per table before migration):**
+- **Org-shared** = resource shared by all org members (contacts, tags, settings). `organization_id` is the owner.
+- **Person-owned** = resource belongs to an individual (profiles, scans, workbenches, drafts). `user_id` is the owner, `organization_id` is for RLS isolation only.
+- Never use `UNIQUE(organization_id)` on person-owned tables — it forces one-per-org
+- Person-owned tables allow multiple instances per user (each can be a billing unit)
+- Declare pattern per table in SCHEMA.md. Reference implementation: WebMap (`created_by` + optional `organization_id`)
+
 **Portability:**
 - `organization_id` on every module table — no org-blind queries
+- Person-owned tables additionally have `user_id` — no user-blind queries on personal resources
 - All lib functions take explicit parameters — no hidden global state
 - Types in `src/types/{module}.ts` — never mixed into `index.ts`
 

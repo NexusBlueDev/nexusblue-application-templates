@@ -1,6 +1,6 @@
 # NexusBlue Module Standard
 
-> **Version:** 1.3
+> **Version:** 1.4
 > **Applies to:** All feature modules in all NexusBlue Next.js + Supabase projects
 > **Canonical location:** `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md`
 > **Install to project:** `{project}/docs/modules/MODULE_STANDARD.md` (copy or symlink)
@@ -84,6 +84,7 @@ Before any code is written, these files MUST exist:
 - [ ] `src/lib/{module}/prompt-docs/` — prompt reference documents
 
 **All modules additionally require (before migration is written):**
+- [ ] Ownership pattern declared per table in SCHEMA.md (org-shared or person-owned)
 - [ ] Billing unit defined in README
 - [ ] Role capability matrix in README
 - [ ] `{prefix}_usage` table included in core migration
@@ -159,6 +160,74 @@ Prompt docs:       NN_{name}.md      (01_developer_api_documentation_prompt.md)
 ---
 
 ## Database Conventions
+
+### Ownership Model (MANDATORY — Declare Before Migration)
+
+Every module table must declare its ownership pattern. There are two patterns — choose the correct one for each table based on what the data represents.
+
+| Pattern | Primary Owner | `organization_id` | `user_id` | Use When |
+|---------|--------------|-------------------|-----------|----------|
+| **Org-shared** | Organization | Required (owner) | Optional (`created_by` for audit) | Resource is shared across all org members |
+| **Person-owned** | User | Required (RLS isolation only) | Required (owner) | Resource belongs to an individual person |
+
+**Org-shared examples:** Contacts, tags, field definitions, compliance records, consent records, integration settings. These are shared resources that all org members can access.
+
+**Person-owned examples:** Grant profiles, scan results, workspaces, personal dashboards, draft workbenches. These belong to the person who created them. A person can have multiple instances. Each instance can be a billing unit.
+
+#### Rules
+
+1. **`organization_id` is ALWAYS present** on every module table (for RLS tenant isolation) — but it is NOT always the owner.
+2. **Person-owned tables use `user_id`** (FK to `auth.users(id)` or `profiles(id)`) as the primary owner. The person controls the resource.
+3. **Never use `UNIQUE(organization_id)` on person-owned tables** — this forces one-per-org and prevents a user from having multiple instances.
+4. **Person-owned unique constraints** use `(user_id, name)` or similar to allow multiple per person while preventing duplicates.
+5. **Billing follows ownership.** If a table is person-owned, billing metering should track per-user (or per-profile), not per-org. The `{prefix}_usage` table should include `user_id` alongside `organization_id`.
+6. **RLS for person-owned tables** adds a user check: org members see only their own rows (`user_id = auth.uid()`), not all org members' rows. Admins and nexusblue_admin can see all.
+7. **Declare the pattern in SCHEMA.md** for every table: "Ownership: org-shared" or "Ownership: person-owned".
+
+#### Reference Implementation
+
+**WebMap** is the reference for the correct person-owned pattern:
+- `webmap_scans` has `created_by UUID NOT NULL` (the owner) + `organization_id UUID` (nullable, for RLS)
+- No `UNIQUE(organization_id)` — a user can create unlimited scans
+- RLS: staff see all, owner sees own (`created_by = auth.uid()`), client sees org scans
+
+#### Decision Flowchart
+
+When adding a new table to a module, ask:
+
+1. **Does every org member need to see and share this data?** → **Org-shared** (contacts, tags, settings)
+2. **Does this data belong to one person's workspace or workflow?** → **Person-owned** (profiles, scans, drafts, workbenches)
+3. **Is this a configuration/infrastructure resource?** → **Org-shared** (integration settings, field definitions)
+4. **Can a person have multiple of these for different purposes?** → **Person-owned** (definitely not `UNIQUE(organization_id)`)
+
+#### Person-Owned RLS Template
+
+```sql
+-- Service role: full access
+CREATE POLICY "Service role full access on {prefix}_{entity}"
+  ON public.{prefix}_{entity} FOR ALL
+  USING (auth.role() = 'service_role');
+
+-- NexusBlue admins: read across all orgs
+CREATE POLICY "NexusBlue admins read all {prefix}_{entity}"
+  ON public.{prefix}_{entity} FOR SELECT
+  USING (
+    (SELECT platform_role FROM public.profiles WHERE id = auth.uid()) = 'nexusblue_admin'
+  );
+
+-- Org admins: read all within their org
+CREATE POLICY "Org admins read org {prefix}_{entity}"
+  ON public.{prefix}_{entity} FOR SELECT
+  USING (
+    (SELECT organization_id FROM public.profiles WHERE id = auth.uid()) = organization_id
+    AND (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin'
+  );
+
+-- Owner: full access to own rows
+CREATE POLICY "Owner CRUD own {prefix}_{entity}"
+  ON public.{prefix}_{entity} FOR ALL
+  USING (user_id = auth.uid());
+```
 
 ### Table Structure
 Every table follows this pattern:
@@ -532,6 +601,9 @@ Do not move to LIVE until admin review flow works.
 A module is portable (can be lifted into another project) when:
 
 - [ ] All lib functions take explicit parameters (no hidden global state)
+- [ ] Ownership pattern declared per table (org-shared or person-owned) in SCHEMA.md
+- [ ] Person-owned tables have `user_id` column and person-owned RLS policies
+- [ ] No `UNIQUE(organization_id)` on person-owned tables
 - [ ] Database table prefix is unique and consistent
 - [ ] All env var dependencies are documented in `.env.local`
 - [ ] Types are in `src/types/{module}.ts` (not mixed into `index.ts`)
@@ -553,3 +625,4 @@ A module is portable (can be lifted into another project) when:
 | 1.1 | 2026-02-28 | Added AI-first requirements, Monetization requirements (billing unit, usage table, admin tier control), Role Capability Matrix (module_permissions + module_defaults tables). Updated Required Files Checklist and Portability Checklist. |
 | 1.2 | 2026-02-28 | Clarified project type scope: `organization_id`, three-tier RLS template, and `{prefix}_usage.organization_id` are Platform Product requirements only — not applicable to Website / Standalone projects. Added reference to Platform Architecture Standard in global CLAUDE.md. |
 | 1.3 | 2026-03-01 | Added cross-references to AGENT_STANDARD.md and INTEGRATION_STANDARD.md. Updated "A module is NOT" section with explicit redirects to the correct standards for agents, integrations, and scripts. |
+| 1.4 | 2026-03-09 | Added Ownership Model section (MANDATORY). Two patterns: org-shared (resource shared by all org members) and person-owned (resource belongs to individual user). Person-owned tables require `user_id`, prohibit `UNIQUE(organization_id)`, use person-owned RLS template. Reference implementation: WebMap. Decision flowchart for choosing pattern. Updated Required Files Checklist and Portability Checklist. Origin: Grant Writer audit revealed `UNIQUE(organization_id)` on profiles forced one-per-org when the module should be per-person with multiple profiles. |
