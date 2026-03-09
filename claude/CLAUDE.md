@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 6.8**
+**Version: 6.9**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -160,12 +160,12 @@ When a session begins:
 4. **If TODO.md is absent**, create it and populate it from any human-required actions found in HANDOFF.md.
 5. **Auto-memory is loaded automatically.** Claude Code loads `~/.claude/projects/[path]/memory/MEMORY.md` into context for every session — no manual check needed. It is machine-local (not committed to git). Update it when you discover stable patterns worth preserving across sessions.
 6. **Verify git remote.** Run `git remote -v`. The origin MUST point to a `NexusBlueDev` repo (`https://github.com/NexusBlueDev/...`). If it points to a personal account or any other org, **stop and fix it** before doing any work: `git remote set-url origin https://github.com/NexusBlueDev/REPO-NAME.git`. This prevents code from being pushed to the wrong repo.
-6b. **AIRP registration (if multi-session work is active).** Check `~/.claude/agent-reservations.json` for active sessions on this project. If another session exists, warn the human and proceed only if approved. Register this session with `status: planning` and **include `pid` field** (your Claude Code process PID — obtain via `echo $PPID` or walk the process tree). The PID enables automatic cleanup when a session dies ungracefully. Note any cross-project issues in `~/.claude/cross-project-issues.md` that target this project. See `docs/AGENT_ISOLATION_STANDARD.md` for full protocol.
+6b. **AIRP registration (if multi-session work is active).** Run `~/.claude/hooks/airp-sync.sh pull` to sync AIRP state from Core DB to local JSON cache. Then check `~/.claude/agent-reservations.json` for active sessions on this project. If another session exists, warn the human and proceed only if approved. Register this session with `status: planning` and **include `pid` field** (your Claude Code process PID — obtain via `echo $PPID` or walk the process tree). The PID enables automatic cleanup when a session dies ungracefully. Note any cross-project issues in `~/.claude/cross-project-issues.md` that target this project. See `docs/AGENT_ISOLATION_STANDARD.md` for full protocol.
 7. **Process health check (MANDATORY).** Run `~/.claude/hooks/process-health.sh check`. This detects orphaned Claude Code instances, stale VS Code extension hosts, resource pressure, and port conflicts. If orphans are found, run `process-health.sh cleanup` before starting work. If critical thresholds are hit (RAM < 2GB, disk > 85%), flag to the user immediately. **Do not skip this step** — orphaned processes from extension updates, crashed sessions, or multi-session work silently degrade the entire Droplet.
-8. **Check Setup Copilot (MANDATORY for projects in `~/dev/` and `~/sandbox/`).** Query the shared Supabase DB for pending items the human has flagged or that prior sessions created. This is how the human communicates back to you between sessions — through needs, blockers, and feedback in the dashboard at `setup.nexusblue.ai`. Sandbox prototypes get the same treatment as dev projects — full needs, blockers, vault, and roadmap tracking.
+8. **Check Setup Copilot (MANDATORY for projects in `~/dev/` and `~/sandbox/`).** Query the Core Platform DB for pending items the human has flagged or that prior sessions created. This is how the human communicates back to you between sessions — through needs, blockers, and feedback in the dashboard at `setup.nexusblue.ai`. Sandbox prototypes get the same treatment as dev projects — full needs, blockers, vault, and roadmap tracking.
    ```bash
    # Quick check — run via Supabase Management API
-   PROJECT_REF="lbmxueowhpecoqlyhdcs"
+   PROJECT_REF="iezojzzfhilbsrkjujjr"
    ACCESS_TOKEN=$(grep '^SUPABASE_ACCESS_TOKEN=' ~/.env.projects/setup-copilot.env 2>/dev/null | cut -d= -f2- || grep '^SUPABASE_ACCESS_TOKEN=' /home/nexusblue/dev/setup-copilot/.env.local | cut -d= -f2-)
    SLUG="PROJECT-SLUG-HERE"
    # Pending needs (things the human must do before you can proceed)
@@ -202,15 +202,15 @@ When a session begins:
 At the end of every session or when the user signals wrapping up:
 
 1. **Update HANDOFF.md** — add a session entry, update current state, update next steps. **If any errors, blockers, debugging sessions, or cascade failures occurred this session, include a "Lessons Learned" subsection in the session entry** — document what went wrong, the root cause, and what rule prevents it next time.
-1b. **Release AIRP reservations (if registered).** Remove session from `~/.claude/agent-reservations.json`. Release migration reservations (update `last_applied` if migrations were applied). Review cross-project issue queue — log any new issues found this session.
+1b. **Release AIRP reservations (if registered).** Remove session from `~/.claude/agent-reservations.json`. Release migration reservations (update `last_applied` if migrations were applied). Review cross-project issue queue — log any new issues found this session. Then run `~/.claude/hooks/airp-sync.sh push` to sync local AIRP state back to Core DB.
 2. **Update TODO.md** — mark completed items done (with date), add any new human actions identified during the session, remove items that are no longer relevant.
 3. **Update MEMORY.md** if new stable patterns, gotchas, or conventions were discovered.
 4. **Update `project_library` (MANDATORY)** — if new features, tools, integrations, or architecture were shipped this session, INSERT rows into the project's `project_library` table via Supabase Management API. **If the table doesn't exist yet**, create it first using the portable schema at `/home/nexusblue/dev/nexusblue-website/supabase/cross-project/project_library_table.sql` (also save a copy to the project's `supabase/migrations/create_project_library.sql`). Categories: `feature`, `tool`, `integration`, `architecture`, `infrastructure`, `standard`, `highlight`, `reference`. Include title, summary (one line for card), content_md (markdown detail with ## heading and bullet points), tags (TEXT[]), and `project_slug` (the project's slug from `dev_projects`). Use `ON CONFLICT (title, project_slug) DO NOTHING` for idempotency. **Every shipped feature must have a library entry** — the Command Center Library page aggregates these across all projects. Skip this step only for projects without a Supabase database.
    **Shared-DB projects:** If this project shares another project's Supabase database (e.g., beers-biz-dayton shares nexusblue-website's DB), you MUST include `project_slug` in every INSERT. Without it, entries are attributed to the DB owner project and are invisible under this project's filter on the Library page.
 4b. **Verify Command Center registration** — if this is the first session for a new project, INSERT into the central `dev_projects` table so it appears on the Environment page. See Command Center Registration section. If the project is already registered, update `live_url`/`preview_url`/`status` if they changed this session.
-5. **Update Setup Copilot (MANDATORY for projects in `~/dev/` and `~/sandbox/`).** Push session results to the shared dashboard so the human sees progress at `setup.nexusblue.ai`. This is how you communicate back to the human between sessions.
+5. **Update Setup Copilot (MANDATORY for projects in `~/dev/` and `~/sandbox/`).** Push session results to the Core Platform dashboard so the human sees progress at `setup.nexusblue.ai`. This is how you communicate back to the human between sessions.
    ```bash
-   PROJECT_REF="lbmxueowhpecoqlyhdcs"
+   PROJECT_REF="iezojzzfhilbsrkjujjr"
    ACCESS_TOKEN=$(grep '^SUPABASE_ACCESS_TOKEN=' ~/.env.projects/setup-copilot.env 2>/dev/null | cut -d= -f2- || grep '^SUPABASE_ACCESS_TOKEN=' /home/nexusblue/dev/setup-copilot/.env.local | cut -d= -f2-)
    SLUG="PROJECT-SLUG-HERE"
    SESSION_ID="SESSION-UUID"  # from setup_sessions for this project
@@ -256,7 +256,7 @@ At the end of every session or when the user signals wrapping up:
 - **Known limitations:** [anything that won't work in this environment]
 ```
 
-Use production credentials for preview (same database). Use `nexusblue-admin@nexusblue.dev` / `NxB_dev_2026!` for super-admin portal access. This block must appear in the conversation output — not buried in HANDOFF.md. The human should be able to copy-paste the URL and go.
+Use production credentials for preview (same database). Use `nexusblue-admin@nexusblue.dev` / `NxBdev2026` for super-admin portal access. This block must appear in the conversation output — not buried in HANDOFF.md. The human should be able to copy-paste the URL and go.
 
 **CRITICAL — Testing URL rules:**
 - **NEVER give `localhost` URLs for testing.** The human accesses the Droplet via VS Code Remote-SSH — `localhost` is unreachable from their browser.
@@ -1743,7 +1743,7 @@ Every project with Supabase Auth has two distinct types of test accounts. These 
 
 | Type | Purpose | Emails | Password | `must_reset_pw` |
 |------|---------|--------|----------|-----------------|
-| **NexusBlue dev** | Internal testing during development | `test-[role]@[project-slug].dev` | `NxB_dev_2026!` | `false` — frictionless for testing |
+| **NexusBlue dev** | Internal testing during development | `test-[role]@[project-slug].dev` | `NxBdev2026` | `false` — frictionless for testing |
 | **Client initial** | First login credentials handed to client | Project-specific | Project-specific | `true` — client sets own password |
 
 **NexusBlue dev accounts** are standardized across all projects. Same password every time — you never need to look it up. The `.dev` TLD is unregistered and can never receive email — safe for `email_confirm: true`.
@@ -1812,8 +1812,8 @@ create_user() {
 echo ""
 echo "=== NexusBlue Dev Accounts ==="
 # One per role — customize for this project's roles
-create_user "test-admin@PROJECT-SLUG.dev" "NxB_dev_2026!" "Test Admin" "admin" false
-create_user "test-client@PROJECT-SLUG.dev" "NxB_dev_2026!" "Test Client" "client" false
+create_user "test-admin@PROJECT-SLUG.dev" "NxBdev2026" "Test Admin" "admin" false
+create_user "test-client@PROJECT-SLUG.dev" "NxBdev2026" "Test Client" "client" false
 
 # === Client Initial Accounts (project-specific) ===
 # Uncomment and customize if client accounts are needed at setup time
@@ -1821,7 +1821,7 @@ create_user "test-client@PROJECT-SLUG.dev" "NxB_dev_2026!" "Test Client" "client
 
 echo ""
 echo "=== Done ==="
-echo "NexusBlue dev password (all roles): NxB_dev_2026!"
+echo "NexusBlue dev password (all roles): NxBdev2026"
 echo "Add created accounts to HANDOFF.md ## Test Accounts section."
 ```
 
@@ -1835,8 +1835,8 @@ After running the seed script, add this to HANDOFF.md:
 ### NexusBlue Dev
 | Role   | Email                        | Password      |
 |--------|------------------------------|---------------|
-| admin  | test-admin@PROJECT-SLUG.dev  | NxB_dev_2026! |
-| client | test-client@PROJECT-SLUG.dev | NxB_dev_2026! |
+| admin  | test-admin@PROJECT-SLUG.dev  | NxBdev2026 |
+| client | test-client@PROJECT-SLUG.dev | NxBdev2026 |
 
 ### Client Initial Credentials
 | Role   | Email               | Notes                          |
@@ -1847,7 +1847,7 @@ Run `./scripts/seed-accounts.sh` to recreate dev accounts if needed.
 ```
 
 ### Rules
-- **NexusBlue dev password is `NxB_dev_2026!`** — same for every project, every role. You never look it up.
+- **NexusBlue dev password is `NxBdev2026`** — same for every project, every role. You never look it up.
 - **`email_confirm: true` always** — test accounts must never wait on email. The `.dev` TLD ensures no real email is ever sent.
 - **NexusBlue dev: `must_reset_pw: false`** — frictionless. Client initial: `must_reset_pw: true` — client sets their own password.
 - **5-second abort window** — the script prints the target URL and pauses so you can abort before hitting the wrong project.
@@ -1951,7 +1951,7 @@ Every Platform Product seed script creates a dedicated NexusBlue super-admin acc
 
 Standard credentials:
 - Email: `nexusblue-admin@nexusblue.dev`
-- Password: `NxB_dev_2026!`
+- Password: `NxBdev2026`
 - Post-creation SQL: `UPDATE public.profiles SET platform_role = 'nexusblue_admin' WHERE id = (SELECT id FROM auth.users WHERE email = 'nexusblue-admin@nexusblue.dev');`
 
 Add this account to `scripts/seed-accounts.sh` after the standard NexusBlue dev accounts, with the SQL step executed via the service role key.
@@ -2240,23 +2240,34 @@ When multiple Claude Code sessions run simultaneously across NexusBlue projects,
 5. **TTL is crash recovery** — process-liveness (PID check) is primary; 24h age-based fallback for sessions without PID; auto-cleaned by boundary guard hook and `process-health.sh`
 6. **Read-only access is always free** — boundary guard only warns on writes
 
+### Sync Architecture (Core DB ↔ Local JSON)
+
+AIRP uses a **hybrid sync model**: Core DB (`core_agent_reservations` + `core_migration_registry`) is the source of truth; local JSON (`~/.claude/agent-reservations.json`) is a fast cache for hooks (<1ms reads). Sync happens at session boundaries via `~/.claude/hooks/airp-sync.sh`:
+
+- **`airp-sync.sh pull`** — DB → JSON (session start: get latest state)
+- **`airp-sync.sh push`** — JSON → DB (session end: push local changes)
+- **`airp-sync.sh status`** — show both local and DB state with sync timestamp
+
+Hooks (boundary-guard, process-health) always read from local JSON for speed. The dashboard at `setup.nexusblue.ai/core` reads from Core DB.
+
 ### Runtime Files
 
 | File | Purpose |
 |------|---------|
-| `~/.claude/agent-reservations.json` | Session registry, migration reservations, cross-project requests |
+| `~/.claude/agent-reservations.json` | Local fast cache — session registry, migration reservations, cross-project requests |
 | `~/.claude/cross-project-issues.md` | Issue queue for bugs found in other projects |
 | `~/.claude/hooks/boundary-guard.sh` | PreToolUse hook — warns on cross-project writes (advisory v1.0) |
+| `~/.claude/hooks/airp-sync.sh` | Syncs AIRP state between Core DB and local JSON cache |
 
 ### Session Lifecycle
 
-1. **Register** — at session start, claim project in `agent-reservations.json` with `pid` field (step 6b of Session Start Protocol). The PID enables automatic expiration when the process dies. Session format:
+1. **Register** — at session start, run `airp-sync.sh pull` then claim project in `agent-reservations.json` with `pid` field (step 6b of Session Start Protocol). The PID enables automatic expiration when the process dies. Session format:
    ```json
    { "project": "name", "branch": "dev", "status": "planning", "started_at": "ISO8601", "pid": 12345, "description": "..." }
    ```
 2. **Reserve** — on plan approval, claim migration numbers and declare resources
 3. **Build** — write only to your project; read any project freely; log cross-project bugs
-4. **Release** — at session end, remove session and reservations (step 1b of Session End Protocol). If session dies ungracefully (SIGTERM, crash), `process-health.sh` and `boundary-guard.sh` auto-expire the session via PID liveness check.
+4. **Release** — at session end, remove session and reservations, then run `airp-sync.sh push` (step 1b of Session End Protocol). If session dies ungracefully (SIGTERM, crash), `process-health.sh` and `boundary-guard.sh` auto-expire the session via PID liveness check.
 
 ### Shared Database Coordination
 
@@ -2395,7 +2406,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v4.4 — Added preview environment pattern with `nexusblue.ai` wildcard domain. Wildcard CNAME (`*.nexusblue.ai → cname.vercel-dns.com`) set up in Namecheap — no per-project DNS changes needed. Each project uses `dev` branch → `./scripts/deploy.sh preview` → `[app-name].nexusblue.ai`. Updated deploy script template with preview support. Added DOMAINS.md registry for subdomain assignments. Vercel Deployment Protection (SSO) must be disabled for apps with their own auth. Found 2026-02-27 on pw-app
 - v4.5 — Added Serwist (PWA service worker) auth route caching gotcha (CRITICAL). Serwist's `defaultCache` includes runtime caching strategies that cache auth routes, server actions, and API routes. `cacheOnNavigation: true` caches page navigations that become stale on auth state changes. Fix: add explicit `NetworkOnly` rules for auth pages, server actions, and API routes before `defaultCache` in runtimeCaching array, and set `cacheOnNavigation: false`. Found 2026-02-27 on pw-app — login broken on production after PWA setup, worked in dev
 - v4.6 — Added Environment Variable Setup Protocol (CRITICAL). When a plan is approved, immediately write `.env.local` with all required keys as empty placeholders (with setup URLs in comments), then STOP and ask the user to fill in keys before building dependent features. Include all credentials a service provides (API keys, service keys, DB passwords). Never proceed to deployment before keys are confirmed. Root cause: mcpc-website deployed to Vercel with empty/stale env vars because keys were never collected upfront — caused failed builds and wasted deploy cycles
-- v4.8 — Added Test Account Seeding Standard. Two account types: NexusBlue dev accounts (`test-[role]@[project-slug].dev` / `NxB_dev_2026!`, `must_reset_pw: false`) for internal testing, and client initial accounts (project-specific, `must_reset_pw: true`) for client onboarding. Standard `scripts/seed-accounts.sh` template using Supabase Admin API with 5-second abort window. Credentials documented in HANDOFF.md `## Test Accounts` block. Root cause: pw-app used inconsistent passwords across sessions; credential documentation was buried in HANDOFF.md prose.
+- v4.8 — Added Test Account Seeding Standard. Two account types: NexusBlue dev accounts (`test-[role]@[project-slug].dev` / `NxBdev2026`, `must_reset_pw: false`) for internal testing, and client initial accounts (project-specific, `must_reset_pw: true`) for client onboarding. Standard `scripts/seed-accounts.sh` template using Supabase Admin API with 5-second abort window. Credentials documented in HANDOFF.md `## Test Accounts` block. Root cause: pw-app used inconsistent passwords across sessions; credential documentation was buried in HANDOFF.md prose.
 - v4.7 — Droplet upgraded to 8 vCPU / 16 GB RAM. Node.js 22 LTS set as required runtime for all projects (`"engines": { "node": ">=22.0.0" }` in package.json). Added Droplet Health & Maintenance section: session start health check with alert thresholds (RAM, swap, disk, load), proactive maintenance rules (orphan processes, npm ci, dev server cleanup, cache pruning), unattended security upgrades, swap safety net, Node version enforcement. Root cause: Droplet was running 2 vCPU / 4 GB RAM with 75% swap usage and load average of 20 — silently degrading all development work
 - v4.9 — Added Module Standard as a non-negotiable global rule. Canonical standard at `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md` v1.1. Key additions: AI-first requirements (streaming default, Sonnet/Haiku/Code rule, prompt caching mandate), Monetization requirements (billing unit before migration, `{prefix}_usage` table in every module, three commercial modes: Embedded/Managed Product/Standalone App), Role Capability Matrix (module_permissions + module_defaults tables, org admin controls within NexusBlue-set ceiling). MODULE_STANDARD.md updated to v1.1 with these three sections. Reference implementations: WebMap + AppVault (nexusblue-website). Origin: AppVault architecture session 2026-02-28
 - v5.1 — Added Testing & CI Standards as a global requirement for all JS/TS projects. Stack: Vitest (unit/integration) + GitHub Actions (CI gates + auto-deploy). CI workflow auto-deploys to Vercel preview on dev push and production on main push — replaces manual `./scripts/deploy.sh` calls as primary deploy path (script remains for emergency overrides). Tests mock Supabase clients and focus on critical paths: auth flows, API route auth enforcement, input validation, core business logic. Target: 10–20 meaningful path tests per project. Template: `docs/github-ci-template.yml`. Implemented on nexusblue-website, pw-app, mcpc-website (Tier 1). Root cause: zero test files and zero CI automation across all 11 projects — identified as the largest gap between NexusBlue's current ranking (~Top 15-20%) and Top 1-3% target
@@ -2410,6 +2421,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v6.0 — **Agent Isolation & Resource Reservation Protocol (AIRP).** File-based coordination layer at `~/.claude/agent-reservations.json` prevents multi-session conflicts. Core: one project per session, migration number reservations, cross-project issue queue (`~/.claude/cross-project-issues.md`), boundary guard hook (`~/.claude/hooks/boundary-guard.sh`) warns on cross-project writes (advisory v1.0, enforcement in v2.0). Session Start Protocol step 6b: register session and check for conflicts. Session End Protocol step 1b: release reservations. Commit Discipline: "claim before commit" for migrations. Shared DB coordination: beers-biz-dayton cannot claim migrations directly on nexusblue-website's DB. Full standard at `docs/AGENT_ISOLATION_STANDARD.md`. TTL-based crash recovery (24h interactive, 2h CI). Prerequisite for Phase 2 autonomous agents. Origin: 2026-03-04 — user request for agent boundary enforcement before enabling autonomous sandbox mode
 - v6.2 — **Lessons Learned Protocol + Environment Clarity.** Three process changes: (1) Session End Protocol step 1 now requires "Lessons Learned" subsection in HANDOFF.md session entries when errors/blockers occurred — documenting root cause and prevention rule. (2) Docs agent checks 11-12 added: verify lessons are documented if failures happened, verify HANDOFF.md declares branch/environment/human-action-required. (3) Architect review check 7 added: pre-flight scan of CLAUDE.md gotchas and MEMORY.md to flag if current plan risks repeating a known mistake. (4) HANDOFF.md standard structure now includes "Environment Status" section with branch, preview/production URLs, and explicit human action required. Origin: 2026-03-04 — user request after Vercel deploy cascade: "I want to make sure that if anything fails all agents know globally they need to track lessons learned and fixes"
 - v6.1 — **Vercel 250MB serverless limit + outputFileTracingExcludes** (CRITICAL gotcha). `serverExternalPackages` does NOT prevent Vercel's NFT from copying native binaries into function bundles. Use `outputFileTracingExcludes` (top-level config, NOT experimental) to actually exclude large packages. Applied for `@tensorflow/tfjs-node` (383MB) on nexusblue-website — BioGate ML routes disabled on Vercel, need Droplet API. Also documents lesson: never batch-commit incomplete WIP to dev — use sandbox/* branches. Origin: 2026-03-04 — BioGate Phase 2 blocked ALL nexusblue-website deploys for multiple sessions
+- v6.9 — **AIRP Core DB sync wired into session protocols.** Added `airp-sync.sh pull` to Session Start Protocol step 6b and `airp-sync.sh push` to Session End Protocol step 1b. AIRP now uses hybrid sync: Core DB (`core_agent_reservations` + `core_migration_registry`) is source of truth, local JSON is fast cache for hooks. Added "Sync Architecture" subsection to AIRP section documenting the model. Updated Session Lifecycle steps 1 and 4 with sync calls. Added `airp-sync.sh` to Runtime Files table. Origin: 2026-03-09 — completing Core DB orchestrator plan item 5 (AIRP DB migration)
 - v6.8 — **"What's Next" block — mandatory task completion pattern.** New top-level section added between Session End Protocol and Step-by-Step Mode. Every task completion (mid-session or session-end) must output a 4-part block: (1) What was done, (2) Remaining work (backlog), (3) "I want to do:" with recommended next action and reasoning, (4) "I am ready, do you agree with what I want to do?" — explicit confirmation prompt. Claude must WAIT for human approval before starting the next task. Previously existed only in nexusblue-website MEMORY.md User Preferences — elevated to global standard because it was skipped when not enforced globally. Origin: 2026-03-06 — user corrected multiple skips of the confirmation pattern during npm publish session
 - v6.7 — **Private npm Packages (GitHub Packages) standard.** New section documenting the full publishing and consuming workflow for private `@nexusbluedev/*` packages on GitHub Packages. Covers: scope-must-match-org rule (403 `create_package` if mismatched), classic PAT requirement (`gho_` OAuth tokens from `gh auth` cannot publish npm), `.npmrc` token interpolation pattern (`${NPM_TOKEN}` in committed file, actual value in `~/.npmrc` or CI env var), Vercel/GHA CI wiring, version bumping workflow. Updated "How Products Are Built" to reference `@nexusbluedev/core` (correct published name). Added `@nexusbluedev/core` to Existing Stack → Core Development. Published packages registry table (currently: `@nexusbluedev/core@0.1.0`). Origin: 2026-03-06 — publishing `@nexusblue/core` failed with 403 because scope didn't match org; `gh auth` token failed because OAuth can't publish npm; three attempts before identifying both root causes
 - v6.6 — **Sandbox preview via Cloudflare Tunnel.** Installed `cloudflared` on the Droplet as the standard method for previewing sandbox prototypes without git or Vercel. `cloudflared tunnel --url http://localhost:PORT` generates a temporary public HTTPS URL (trycloudflare.com) — no account needed, instant, dies when stopped. Added to: Existing Stack (Development Environment), Prototype & Testing Flow, new "Sandbox Preview" section under Deployment Awareness, and sandbox CLAUDE.md. Also documented gotcha: Next.js route groups (`(storefront)`) are overridden by a default `src/app/page.tsx` — must delete it. Origin: 2026-03-06 — akguys-platform prototype needed client-visible preview from sandbox
