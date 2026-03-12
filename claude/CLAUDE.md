@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 6.9**
+**Version: 7.0**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -776,9 +776,29 @@ Before introducing any new tool, library, or service, check whether these solve 
 
 ### Infrastructure & Hosting
 - **Vercel** — Frontend and Next.js deployments, preview URLs, edge functions
-- **DigitalOcean** — Droplets, managed databases, custom infrastructure
+- **DigitalOcean** — Droplets (dev + prod), managed databases, custom infrastructure
 - **Supabase** — Auth, PostgreSQL + pgvector, storage, edge functions, realtime
 - **GitHub Pages** — Static HTML5 apps (PWAs, game apps)
+
+### Two-Droplet Architecture (IMPORTANT)
+
+NexusBlue runs two dedicated Droplets with separated concerns:
+
+| Droplet | Alias | IP (public) | IP (VPC) | Spec | Role |
+|---------|-------|-------------|----------|------|------|
+| **nexusblue-dev-hub** | `nexusblue-dev` | 45.55.32.230 | 10.108.0.2 | 8 vCPU / 16 GB / 320 GB | Development only — code, Claude Code, VS Code |
+| **nexusblue-prod** | `nexusblue-prod` | 161.35.132.28 | 10.108.0.5 | 4 vCPU / 8 GB / 160 GB | Production services only |
+
+Both are in NYC3, connected via private VPC (10.108.0.0/20). **Never run production services on the dev Droplet. Never develop on the prod Droplet.**
+
+**Prod Droplet services:**
+| Service | systemd unit | Port | Deploy |
+|---------|-------------|------|--------|
+| Core Platform daemon | `nexusblue-core` | N/A (background) | GH Actions → SSH → git pull → restart |
+| Setup Copilot dashboard | `nexusblue-setup-copilot` | 3100 | GH Actions → build → SCP → atomic swap |
+| Health Reporter | `nexusblue-health` | internal | GH Actions → SSH → restart |
+
+**nginx reverse proxy:** `setup.nexusblue.ai` → localhost:3100 (SSL via Let's Encrypt, auto-renew)
 
 ### Development Environment
 - **DigitalOcean Droplet (nexusblue-dev-hub)** — Primary dev environment (8 vCPU / 16 GB RAM / Ubuntu 22.04 LTS). All code and tools live here. Connect via VS Code Remote-SSH (`ssh nexusblue-dev`). No local installs beyond VS Code + SSH key.
@@ -851,14 +871,62 @@ desktop.ini
 
 ## Deployment Awareness
 
-### DigitalOcean Droplet (Background Services & APIs)
-- **Background services run as systemd units** under the `nexusblue` user. Service files live in `config/services/` in `nexusblue-servers`.
-- **Logs go to** `/var/log/nexusblue/[service].log` (symlinked as `~/logs/services/`)
-- **Reverse proxy pattern:** Apps on custom ports (3000, 8080, etc.) sit behind nginx on 443. Never open arbitrary ports in UFW for production.
-  - Dev only: `sudo ufw allow [port]/tcp comment '[app name]'`
+### DigitalOcean Prod Droplet (Background Services & APIs)
+
+All production services run on **nexusblue-prod** (161.35.132.28). See "Two-Droplet Architecture" above.
+
+- **Background services run as systemd units** under the `nexusblue` user.
+- **Logs go to** `/var/log/nexusblue/[service].log` (managed by logrotate: 7 rotations, 10M max, compressed)
+- **Reverse proxy pattern:** Apps on custom ports sit behind nginx on 443. Never open arbitrary ports in UFW for production.
   - Production: nginx proxy → internal port, SSL via Let's Encrypt
-- **Service management:** `sudo systemctl [start|stop|restart|status] nexusblue-[service]`
+- **Service management:** `ssh nexusblue-prod 'sudo systemctl [start|stop|restart|status] nexusblue-[service]'`
 - **Env vars for services:** Store in `~/.env.projects/[project].env`, load in systemd unit with `EnvironmentFile=`
+- **Resource limits on every service:** `MemoryMax` and `MemoryHigh` set via systemd override to prevent OOM cascades
+
+### GitHub Actions Deploy Pipelines (Prod Droplet)
+
+All production services deploy automatically via GitHub Actions on push to `main`. Three patterns:
+
+**Pattern 1: SSH + git pull (for TypeScript services running via tsx)**
+```yaml
+# Used by: nexusblue-core
+# SSH into prod → git pull → npm ci --ignore-scripts → restart
+- uses: appleboy/ssh-action@v1
+  with:
+    script: |
+      cd ~/services/SERVICE-NAME
+      git pull origin main
+      npm ci --ignore-scripts  # skip prepare script that needs dev deps
+      sudo systemctl restart SERVICE-NAME
+```
+
+**Pattern 2: Build on runner + SCP + atomic swap (for Next.js standalone)**
+```yaml
+# Used by: setup-copilot
+# Build on GHA runner → SCP to staging dir → atomic swap → restart
+- run: npm ci && npm run build  # with NEXT_PUBLIC env vars from secrets
+- uses: appleboy/scp-action@v0.1.7  # sends .next/standalone/ + .next/static/
+- uses: appleboy/ssh-action@v1
+  with:
+    script: |
+      cp -a staging/.next/standalone/. dest/   # MUST use /. not /* for dotfiles
+      cp -r staging/.next/static dest/.next/static
+      sudo systemctl restart SERVICE-NAME
+      # Health check + rollback on failure
+```
+
+**Pattern 3: SSH + restart (for simple services)**
+```yaml
+# Used by: health-reporter (path-filtered: only deploys when services/health-reporter/** changes)
+- uses: appleboy/ssh-action@v1
+  with:
+    script: sudo systemctl restart nexusblue-health
+```
+
+**Required GitHub secrets (set on each repo):** `PROD_SSH_KEY`, `PROD_HOST`, `PROD_USER`
+**Next.js builds also need:** `NEXT_PUBLIC_*` vars as secrets (inlined at build time)
+
+**CRITICAL: `cp -a source/. dest/` not `cp -r source/* dest/`** — glob `*` does not match dotfiles. Next.js standalone builds have a `.next` directory that MUST be copied.
 
 ### Vercel (GitHub Auto-Deploy — Primary Method)
 
@@ -2429,6 +2497,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v6.0 — **Agent Isolation & Resource Reservation Protocol (AIRP).** File-based coordination layer at `~/.claude/agent-reservations.json` prevents multi-session conflicts. Core: one project per session, migration number reservations, cross-project issue queue (`~/.claude/cross-project-issues.md`), boundary guard hook (`~/.claude/hooks/boundary-guard.sh`) warns on cross-project writes (advisory v1.0, enforcement in v2.0). Session Start Protocol step 6b: register session and check for conflicts. Session End Protocol step 1b: release reservations. Commit Discipline: "claim before commit" for migrations. Shared DB coordination: beers-biz-dayton cannot claim migrations directly on nexusblue-website's DB. Full standard at `docs/AGENT_ISOLATION_STANDARD.md`. TTL-based crash recovery (24h interactive, 2h CI). Prerequisite for Phase 2 autonomous agents. Origin: 2026-03-04 — user request for agent boundary enforcement before enabling autonomous sandbox mode
 - v6.2 — **Lessons Learned Protocol + Environment Clarity.** Three process changes: (1) Session End Protocol step 1 now requires "Lessons Learned" subsection in HANDOFF.md session entries when errors/blockers occurred — documenting root cause and prevention rule. (2) Docs agent checks 11-12 added: verify lessons are documented if failures happened, verify HANDOFF.md declares branch/environment/human-action-required. (3) Architect review check 7 added: pre-flight scan of CLAUDE.md gotchas and MEMORY.md to flag if current plan risks repeating a known mistake. (4) HANDOFF.md standard structure now includes "Environment Status" section with branch, preview/production URLs, and explicit human action required. Origin: 2026-03-04 — user request after Vercel deploy cascade: "I want to make sure that if anything fails all agents know globally they need to track lessons learned and fixes"
 - v6.1 — **Vercel 250MB serverless limit + outputFileTracingExcludes** (CRITICAL gotcha). `serverExternalPackages` does NOT prevent Vercel's NFT from copying native binaries into function bundles. Use `outputFileTracingExcludes` (top-level config, NOT experimental) to actually exclude large packages. Applied for `@tensorflow/tfjs-node` (383MB) on nexusblue-website — BioGate ML routes disabled on Vercel, need Droplet API. Also documents lesson: never batch-commit incomplete WIP to dev — use sandbox/* branches. Origin: 2026-03-04 — BioGate Phase 2 blocked ALL nexusblue-website deploys for multiple sessions
+- v7.0 — **Two-Droplet production architecture + GitHub Actions deploy pipelines.** Separated dev and prod into dedicated Droplets: nexusblue-dev-hub (8 vCPU/16GB, development only) and nexusblue-prod (4 vCPU/8GB, production services only). Three production services migrated to prod: nexusblue-core daemon, setup-copilot dashboard (setup.nexusblue.ai), health-reporter. Each service has a GitHub Actions workflow on main that deploys automatically. Three deploy patterns documented: SSH+git pull (TypeScript services), build+SCP+atomic swap (Next.js standalone), SSH+restart (simple services). Added Two-Droplet Architecture table, deploy pipeline patterns, and critical gotchas (dotfile copy with `cp -a source/.`, npm install --production triggering prepare scripts, NEXT_PUBLIC vars needed at build time). Security hardening: SSH key-only auth, fail2ban, UFW, systemd resource limits, logrotate. SSL via Let's Encrypt with auto-renewal. Origin: 2026-03-12 — SSH restart loop caused by resource contention between dev tools and production services on a single Droplet
 - v6.9 — **AIRP Core DB sync wired into session protocols.** Added `airp-sync.sh pull` to Session Start Protocol step 6b and `airp-sync.sh push` to Session End Protocol step 1b. AIRP now uses hybrid sync: Core DB (`core_agent_reservations` + `core_migration_registry`) is source of truth, local JSON is fast cache for hooks. Added "Sync Architecture" subsection to AIRP section documenting the model. Updated Session Lifecycle steps 1 and 4 with sync calls. Added `airp-sync.sh` to Runtime Files table. Origin: 2026-03-09 — completing Core DB orchestrator plan item 5 (AIRP DB migration)
 - v6.8 — **"What's Next" block — mandatory task completion pattern.** New top-level section added between Session End Protocol and Step-by-Step Mode. Every task completion (mid-session or session-end) must output a 4-part block: (1) What was done, (2) Remaining work (backlog), (3) "I want to do:" with recommended next action and reasoning, (4) "I am ready, do you agree with what I want to do?" — explicit confirmation prompt. Claude must WAIT for human approval before starting the next task. Previously existed only in nexusblue-website MEMORY.md User Preferences — elevated to global standard because it was skipped when not enforced globally. Origin: 2026-03-06 — user corrected multiple skips of the confirmation pattern during npm publish session
 - v6.7 — **Private npm Packages (GitHub Packages) standard.** New section documenting the full publishing and consuming workflow for private `@nexusbluedev/*` packages on GitHub Packages. Covers: scope-must-match-org rule (403 `create_package` if mismatched), classic PAT requirement (`gho_` OAuth tokens from `gh auth` cannot publish npm), `.npmrc` token interpolation pattern (`${NPM_TOKEN}` in committed file, actual value in `~/.npmrc` or CI env var), Vercel/GHA CI wiring, version bumping workflow. Updated "How Products Are Built" to reference `@nexusbluedev/core` (correct published name). Added `@nexusbluedev/core` to Existing Stack → Core Development. Published packages registry table (currently: `@nexusbluedev/core@0.1.0`). Origin: 2026-03-06 — publishing `@nexusblue/core` failed with 403 because scope didn't match org; `gh auth` token failed because OAuth can't publish npm; three attempts before identifying both root causes
