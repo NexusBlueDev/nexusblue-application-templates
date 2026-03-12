@@ -208,6 +208,16 @@ At the end of every session or when the user signals wrapping up:
 4. **Update `project_library` (MANDATORY)** — if new features, tools, integrations, or architecture were shipped this session, INSERT rows into the project's `project_library` table via Supabase Management API. **If the table doesn't exist yet**, create it first using the portable schema at `/home/nexusblue/dev/nexusblue-website/supabase/cross-project/project_library_table.sql` (also save a copy to the project's `supabase/migrations/create_project_library.sql`). Categories: `feature`, `tool`, `integration`, `architecture`, `infrastructure`, `standard`, `highlight`, `reference`. Include title, summary (one line for card), content_md (markdown detail with ## heading and bullet points), tags (TEXT[]), and `project_slug` (the project's slug from `dev_projects`). Use `ON CONFLICT (title, project_slug) DO NOTHING` for idempotency. **Every shipped feature must have a library entry** — the Command Center Library page aggregates these across all projects. Skip this step only for projects without a Supabase database.
    **Shared-DB projects:** If this project shares another project's Supabase database (e.g., beers-biz-dayton shares nexusblue-website's DB), you MUST include `project_slug` in every INSERT. Without it, entries are attributed to the DB owner project and are invisible under this project's filter on the Library page.
 4b. **Verify Command Center registration** — if this is the first session for a new project, INSERT into the central `dev_projects` table so it appears on the Environment page. See Command Center Registration section. If the project is already registered, update `live_url`/`preview_url`/`status` if they changed this session.
+4c. **Auto-push project URLs (MANDATORY for client projects).** If this session worked on a project that has a `dev_projects` entry with an `organization_id` (i.e., a client project), push any URLs generated or used this session into `project_urls` using the shared utility script. This populates the partner portal automatically — partners see every URL from research through production without manual entry.
+   ```bash
+   # Push any new URLs generated this session (preview, staging, Figma, docs, etc.)
+   ~/scripts/push-project-url.sh "<project-slug>" "<label>" "<url>" <type>
+   # Types: production, preview, staging, prototype, figma, docs, research, test, other
+   # Examples:
+   # ~/scripts/push-project-url.sh "1application-website" "Vercel Preview" "https://1app.nexusblue.ai" preview
+   # ~/scripts/push-project-url.sh "mcpc-website" "Figma Mockups" "https://figma.com/file/..." figma
+   ```
+   **What to push:** Any URL the partner or client would want to see — preview domains, production URLs, GitHub repos, Figma files, research docs, staging builds, admin panels. If you deployed it, linked to it, or created it this session, push it. The script is idempotent (same URL won't be duplicated). Skip this step for internal-only projects (no `organization_id` on `dev_projects`).
 5. **Update Setup Copilot (MANDATORY for projects in `~/dev/` and `~/sandbox/`).** Push session results to the Core Platform dashboard so the human sees progress at `setup.nexusblue.ai`. This is how you communicate back to the human between sessions.
    ```bash
    PROJECT_REF="iezojzzfhilbsrkjujjr"
