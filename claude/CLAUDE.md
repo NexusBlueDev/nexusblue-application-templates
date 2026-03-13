@@ -1,6 +1,6 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 7.0**
+**Version: 7.1**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Droplet master:** `/home/nexusblue/dev/nexusblue-application-templates/claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` (applies to all Claude Code sessions globally)
@@ -2313,6 +2313,97 @@ This is **advisory** (warnings, not blocking) — it catches drift that slipped 
 
 ---
 
+## Session Ledger Protocol (Context Compression Recovery)
+
+Long sessions hit context limits and compress. When that happens, decisions, lessons, debugging context, and work state are lost. The **session ledger** is a write-ahead log (WAL) that prevents this — the same pattern databases use to survive crashes.
+
+### How It Works (Four Automated Hooks)
+
+| Hook | Event | What It Does |
+|------|-------|-------------|
+| `session-ledger-init.sh` | SessionStart (startup\|resume) | Creates a fresh ledger file at `~/.claude/projects/{path}/memory/session-ledger.md` |
+| `session-ledger.sh` | PostToolUse (Bash) | Detects significant events (commits, builds, deploys, errors, migrations) and appends to ledger |
+| `session-ledger-flush.sh` | PreCompact (auto\|manual) | Flushes high-signal entries (decisions, lessons, standards) to MEMORY.md and HANDOFF.md before compression |
+| `session-ledger-restore.sh` | SessionStart (compact) | Re-injects ledger into context via `additionalContext` after compression |
+
+### What the Hooks Capture Automatically
+- Git commits, pushes, merges, branch operations (ACTION / STATE_CHANGE)
+- Build successes and failures (ACTION / ERROR)
+- Test passes and failures (ACTION / ERROR)
+- Database migrations and queries (STATE_CHANGE)
+- Service restarts (STATE_CHANGE)
+- Deployments (ACTION)
+- Dependency changes (STATE_CHANGE)
+- Infrastructure changes — nginx, ufw, certbot (STATE_CHANGE)
+- PR creation (ACTION)
+
+### What YOU Must Capture Manually
+
+The hooks cannot detect reasoning, insights, or human-required items. **You are responsible for logging these by appending to the session ledger file** at `~/.claude/projects/{project-path}/memory/session-ledger.md`:
+
+| When | Category | What to Log |
+|------|----------|-------------|
+| Architecture or implementation choice made | DECISION | What, why, alternatives rejected |
+| Debugging session resolved | LESSON | What went wrong, root cause, prevention rule |
+| Feature or milestone completed | ACTION | What shipped, current state |
+| New pattern or gotcha discovered | STANDARD | Rule, scope, detail |
+| Human action needed | BLOCKER | What, who, why blocking |
+| Error encountered (not caught by hooks) | ERROR | What, root cause, resolution |
+
+### Entry Format (Append to Ledger)
+
+```markdown
+---
+
+## [{ISO8601 timestamp}] {CATEGORY}
+**What:** {one-line summary}
+**Why:** {context — for DECISION entries}
+**Root cause:** {for LESSON and ERROR entries}
+**Rule:** {for LESSON and STANDARD entries}
+**Applies to:** {scope — for STANDARD entries}
+```
+
+### After Context Compression
+
+When context is compressed, the `session-ledger-restore.sh` hook automatically injects the ledger into your context. When you see the "SESSION LEDGER RESTORED" block:
+
+1. **If truncated**, read the full ledger file for complete history
+2. **Acknowledge** what you know from the ledger in your next response
+3. **Continue work** from where you left off — the ledger IS your memory
+4. **Check HANDOFF.md** for any mid-session checkpoints the flush hook added
+
+### Periodic Flush Rule (Every 5 Major Actions)
+
+Every 5 significant actions (commits, features shipped, decisions made), proactively flush ledger entries to their durable destinations:
+
+| Entry Type | Flush To | Why |
+|-----------|----------|-----|
+| LESSON, STANDARD | MEMORY.md | Cross-session knowledge |
+| ACTION, STATE_CHANGE | HANDOFF.md (session progress) | Project state continuity |
+| BLOCKER | TODO.md | Human action tracking |
+| STANDARD (global scope) | Global CLAUDE.md → Stack-Specific Build Gotchas | Cross-project prevention |
+
+This periodic flush reduces data loss if the session crashes before the end protocol runs. The PreCompact hook is the safety net — it flushes automatically before compression — but don't rely solely on it.
+
+### Ledger File Lifecycle
+
+1. **Created** at session start by `session-ledger-init.sh`
+2. **Appended to** throughout the session by hooks (automated) and Claude (manual)
+3. **Flushed** to durable storage before compression by `session-ledger-flush.sh`
+4. **Re-injected** into context after compression by `session-ledger-restore.sh`
+5. **Overwritten** at next session start (previous session's entries already flushed to MEMORY.md/HANDOFF.md)
+
+### Rules
+
+- **Write to the ledger as events happen** — not at session end. The whole point is surviving compression.
+- **Every DECISION gets a ledger entry.** If you chose A over B, log it. After compression, you won't remember why.
+- **Every debugging detour gets a LESSON entry.** Root cause + prevention rule. This is how the system learns.
+- **The ledger is append-only.** Never edit or delete entries. New information gets new entries.
+- **Session ledger files are ephemeral.** They're overwritten each session. Important content is flushed to durable files (MEMORY.md, HANDOFF.md, CLAUDE.md).
+- **Ledger cleanup** is handled by `process-health.sh` — stale ledger files from crashed sessions are pruned automatically.
+
+---
+
 ## Agent Isolation & Resource Reservation Protocol (AIRP)
 
 When multiple Claude Code sessions run simultaneously across NexusBlue projects, AIRP prevents development conflicts. Full protocol at `docs/AGENT_ISOLATION_STANDARD.md`.
@@ -2507,6 +2598,7 @@ When you identify a standard that should apply to ALL NexusBlue projects:
 - v6.0 — **Agent Isolation & Resource Reservation Protocol (AIRP).** File-based coordination layer at `~/.claude/agent-reservations.json` prevents multi-session conflicts. Core: one project per session, migration number reservations, cross-project issue queue (`~/.claude/cross-project-issues.md`), boundary guard hook (`~/.claude/hooks/boundary-guard.sh`) warns on cross-project writes (advisory v1.0, enforcement in v2.0). Session Start Protocol step 6b: register session and check for conflicts. Session End Protocol step 1b: release reservations. Commit Discipline: "claim before commit" for migrations. Shared DB coordination: beers-biz-dayton cannot claim migrations directly on nexusblue-website's DB. Full standard at `docs/AGENT_ISOLATION_STANDARD.md`. TTL-based crash recovery (24h interactive, 2h CI). Prerequisite for Phase 2 autonomous agents. Origin: 2026-03-04 — user request for agent boundary enforcement before enabling autonomous sandbox mode
 - v6.2 — **Lessons Learned Protocol + Environment Clarity.** Three process changes: (1) Session End Protocol step 1 now requires "Lessons Learned" subsection in HANDOFF.md session entries when errors/blockers occurred — documenting root cause and prevention rule. (2) Docs agent checks 11-12 added: verify lessons are documented if failures happened, verify HANDOFF.md declares branch/environment/human-action-required. (3) Architect review check 7 added: pre-flight scan of CLAUDE.md gotchas and MEMORY.md to flag if current plan risks repeating a known mistake. (4) HANDOFF.md standard structure now includes "Environment Status" section with branch, preview/production URLs, and explicit human action required. Origin: 2026-03-04 — user request after Vercel deploy cascade: "I want to make sure that if anything fails all agents know globally they need to track lessons learned and fixes"
 - v6.1 — **Vercel 250MB serverless limit + outputFileTracingExcludes** (CRITICAL gotcha). `serverExternalPackages` does NOT prevent Vercel's NFT from copying native binaries into function bundles. Use `outputFileTracingExcludes` (top-level config, NOT experimental) to actually exclude large packages. Applied for `@tensorflow/tfjs-node` (383MB) on nexusblue-website — BioGate ML routes disabled on Vercel, need Droplet API. Also documents lesson: never batch-commit incomplete WIP to dev — use sandbox/* branches. Origin: 2026-03-04 — BioGate Phase 2 blocked ALL nexusblue-website deploys for multiple sessions
+- v7.1 — **Session Ledger Protocol — write-ahead log for AI context compression recovery.** Four automated hooks prevent knowledge loss during long sessions: (1) `session-ledger-init.sh` (SessionStart: startup|resume) creates fresh ledger, (2) `session-ledger.sh` (PostToolUse: Bash) detects commits, builds, deploys, errors, migrations and appends to ledger automatically, (3) `session-ledger-flush.sh` (PreCompact) flushes decisions/lessons/standards to MEMORY.md and HANDOFF.md before compression, (4) `session-ledger-restore.sh` (SessionStart: compact) re-injects full ledger into context via `additionalContext` after compression. Hooks capture mechanical events; Claude must manually log decisions, lessons, standards, and blockers. Periodic flush every 5 major actions prevents data loss from crashes. Ledger format: append-only markdown with timestamped categorized entries (DECISION, LESSON, ACTION, ERROR, STANDARD, BLOCKER, STATE_CHANGE). Origin: 2026-03-13 — user identified that context compression in long sessions silently discards decisions, lessons, and work state; current protocol only saves at session end which is too late
 - v7.0 — **Two-Droplet production architecture + GitHub Actions deploy pipelines.** Separated dev and prod into dedicated Droplets: nexusblue-dev-hub (8 vCPU/16GB, development only) and nexusblue-prod (4 vCPU/8GB, production services only). Three production services migrated to prod: nexusblue-core daemon, setup-copilot dashboard (setup.nexusblue.ai), health-reporter. Each service has a GitHub Actions workflow on main that deploys automatically. Three deploy patterns documented: SSH+git pull (TypeScript services), build+SCP+atomic swap (Next.js standalone), SSH+restart (simple services). Added Two-Droplet Architecture table, deploy pipeline patterns, and critical gotchas (dotfile copy with `cp -a source/.`, npm install --production triggering prepare scripts, NEXT_PUBLIC vars needed at build time). Security hardening: SSH key-only auth, fail2ban, UFW, systemd resource limits, logrotate. SSL via Let's Encrypt with auto-renewal. Origin: 2026-03-12 — SSH restart loop caused by resource contention between dev tools and production services on a single Droplet
 - v6.9 — **AIRP Core DB sync wired into session protocols.** Added `airp-sync.sh pull` to Session Start Protocol step 6b and `airp-sync.sh push` to Session End Protocol step 1b. AIRP now uses hybrid sync: Core DB (`core_agent_reservations` + `core_migration_registry`) is source of truth, local JSON is fast cache for hooks. Added "Sync Architecture" subsection to AIRP section documenting the model. Updated Session Lifecycle steps 1 and 4 with sync calls. Added `airp-sync.sh` to Runtime Files table. Origin: 2026-03-09 — completing Core DB orchestrator plan item 5 (AIRP DB migration)
 - v6.8 — **"What's Next" block — mandatory task completion pattern.** New top-level section added between Session End Protocol and Step-by-Step Mode. Every task completion (mid-session or session-end) must output a 4-part block: (1) What was done, (2) Remaining work (backlog), (3) "I want to do:" with recommended next action and reasoning, (4) "I am ready, do you agree with what I want to do?" — explicit confirmation prompt. Claude must WAIT for human approval before starting the next task. Previously existed only in nexusblue-website MEMORY.md User Preferences — elevated to global standard because it was skipped when not enforced globally. Origin: 2026-03-06 — user corrected multiple skips of the confirmation pattern during npm publish session
