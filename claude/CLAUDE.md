@@ -189,9 +189,10 @@ When a session begins:
      -H "Authorization: Bearer $ACCESS_TOKEN" -H "Content-Type: application/json" \
      -d "{\"query\": \"UPDATE setup_sessions SET status = 'active', last_activity = now() WHERE project_slug = '${SLUG}' AND status != 'completed'\"}"
    ```
-9. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
-10. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
-11. **Start working.** Don't wait for confirmation on obvious next steps.
+9. **Run continuity agent (MANDATORY).** Invoke the continuity review agent (session start prompt — see Agent Orchestration Standard). This agent reads HANDOFF.md, TODO.md, MEMORY.md, the session ledger, Setup Copilot state, and cross-project issues. It produces a **Continuity Report** confirming: prior session state, unfinished work, active blockers, relevant gotchas, pending human actions, unflushed knowledge, and ledger status. **Output the Continuity Report to the user** so they see the full state before work begins. If the report shows ATTENTION NEEDED, address the flagged items before starting work.
+10. **Scan the project structure** — file tree, package.json / requirements.txt, git log (last 10 commits), README, SETUP.md.
+11. **Declare your understanding** in 3-5 lines: what the project is, where it stands, what you're about to do.
+12. **Start working.** Don't wait for confirmation on obvious next steps.
 
 > **New Project Rule:** When creating a brand new project (no existing HANDOFF.md, no git history), **do NOT explore or read other projects on the Droplet.** You already know the stack, conventions, and templates from this global CLAUDE.md. Scaffold from knowledge, not from scanning unrelated repos. Reading other projects wastes time, risks context pollution, and adds no value when the standards are documented here. Only reference another project if the user explicitly asks you to copy a specific pattern from it.
 
@@ -205,6 +206,7 @@ At the end of every session or when the user signals wrapping up:
 1b. **Release AIRP reservations (if registered).** Remove session from `~/.claude/agent-reservations.json`. Release migration reservations (update `last_applied` if migrations were applied). Review cross-project issue queue — log any new issues found this session. Then run `~/.claude/hooks/airp-sync.sh push` to sync local AIRP state back to Core DB.
 2. **Update TODO.md** — mark completed items done (with date), add any new human actions identified during the session, remove items that are no longer relevant.
 3. **Update MEMORY.md** if new stable patterns, gotchas, or conventions were discovered.
+3b. **Run continuity agent — session end (MANDATORY).** Invoke the continuity review agent (session end prompt — see Agent Orchestration Standard). This agent audits the session ledger for completeness: flags missing decision/lesson entries, checks for unflushed standards, verifies BLOCKER entries have TODO items, and assesses compression readiness. **Output the Continuity Audit to the user.** Fix any GAPS FOUND before proceeding to step 4. This runs alongside the docs agent (step 6) — they check different things.
 4. **Update `project_library` (MANDATORY)** — if new features, tools, integrations, or architecture were shipped this session, INSERT rows into the project's `project_library` table via Supabase Management API. **If the table doesn't exist yet**, create it first using the portable schema at `/home/nexusblue/dev/nexusblue-website/supabase/cross-project/project_library_table.sql` (also save a copy to the project's `supabase/migrations/create_project_library.sql`). Categories: `feature`, `tool`, `integration`, `architecture`, `infrastructure`, `standard`, `highlight`, `reference`. Include title, summary (one line for card), content_md (markdown detail with ## heading and bullet points), tags (TEXT[]), and `project_slug` (the project's slug from `dev_projects`). Use `ON CONFLICT (title, project_slug) DO NOTHING` for idempotency. **Every shipped feature must have a library entry** — the Command Center Library page aggregates these across all projects. Skip this step only for projects without a Supabase database.
    **Shared-DB projects:** If this project shares another project's Supabase database (e.g., beers-biz-dayton shares nexusblue-website's DB), you MUST include `project_slug` in every INSERT. Without it, entries are attributed to the DB owner project and are invisible under this project's filter on the Library page.
 4b. **Verify Command Center registration** — if this is the first session for a new project, INSERT into the central `dev_projects` table so it appears on the Environment page. See Command Center Registration section. If the project is already registered, update `live_url`/`preview_url`/`status` if they changed this session.
@@ -2156,10 +2158,11 @@ Load via `next/font/google` with `display: 'swap'`. CSS variables: `--font-poppi
 
 Orchestration agents are specialized subagents invoked at critical lifecycle gates. They protect architectural quality, catch security issues before production, and act as a second opinion when a single session can miss cross-cutting concerns.
 
-### The Four Orchestration Agents
+### The Five Orchestration Agents
 
 | Agent | Gate | What It Blocks |
 |-------|------|---------------|
+| **continuity** | Session start + session end | Session cannot begin without state confirmation; cannot close without ledger audit |
 | **architect** | Module PLANNING → BUILDING | Code cannot be written until schema and architecture are verified |
 | **security** | New API routes → merge to `main` | Routes cannot ship until auth / RLS / validation is confirmed clean |
 | **qa** | Module ADMIN → LIVE (MVP) | Client-facing feature cannot go live until completeness is verified |
@@ -2168,6 +2171,85 @@ Orchestration agents are specialized subagents invoked at critical lifecycle gat
 ### Invocation Patterns
 
 Invoke via `Agent tool` with `subagent_type: general-purpose`. Standard prompt per agent type:
+
+**Continuity review — SESSION START** (MANDATORY — first action of every session):
+```
+Session continuity audit for [project-path].
+
+You are the Continuity Agent. Your job: confirm the session has full context and nothing
+was lost from prior sessions. You are the first agent to run and the last to sign off.
+
+CHECK (session start):
+1. **Ledger initialized:** Verify session-ledger.md exists at
+   ~/.claude/projects/{escaped-path}/memory/session-ledger.md with today's date in the header.
+   If missing, the SessionStart hook may have failed — flag immediately.
+2. **Prior session state:** Read HANDOFF.md → last session entry. Report: what was done,
+   what was promised as "next up", any unresolved errors or blockers.
+3. **MEMORY.md scan:** Read MEMORY.md for gotchas, patterns, and any "Pre-Compaction Flush"
+   sections from prior sessions that indicate context was compressed and knowledge was saved.
+   List any lessons or standards that are relevant to today's planned work.
+4. **TODO.md audit:** Read TODO.md. Report: how many items pending, any items marked blocking,
+   any items completed since last session that should be acknowledged.
+5. **Setup Copilot check:** Query pending needs, open blockers, and unread feedback for this
+   project from the Core Platform DB (use the standard curl pattern from Session Start Protocol).
+6. **Session ledger from prior session:** If a session-ledger.md exists with a COMPACTION entry
+   or entries from a previous date, there may be unflushed knowledge. Extract and report any
+   DECISION, LESSON, STANDARD entries that weren't yet merged into MEMORY.md or HANDOFF.md.
+7. **Cross-project issues:** Check ~/.claude/cross-project-issues.md for any issues targeting
+   this project logged by other sessions.
+
+REPORT FORMAT:
+## Continuity Report — [project-slug]
+**Prior session:** [number] on [date] — [one-line summary]
+**Unfinished work:** [list or "none"]
+**Active blockers:** [list or "none"]
+**Relevant gotchas for today's work:** [list or "none"]
+**Pending human actions:** [count] ([count] blocking)
+**Setup Copilot feedback:** [count new] or "none"
+**Unflushed prior knowledge:** [list or "none"]
+**Cross-project issues:** [list or "none"]
+**Ledger status:** initialized / missing / stale
+
+Return: READY (all clear) or ATTENTION NEEDED with specific items.
+```
+
+**Continuity review — SESSION END** (MANDATORY — runs alongside docs agent before final push):
+```
+Session continuity audit (end-of-session) for [project-path].
+
+You are the Continuity Agent. Your job: ensure nothing from this session is lost.
+
+CHECK (session end):
+1. **Ledger completeness:** Read session-ledger.md. Count entries by category.
+   Flag if ANY of these are true:
+   - Zero DECISION entries but commits were made (decisions were made but not logged)
+   - Zero LESSON entries but ERROR entries exist (errors occurred but lessons weren't captured)
+   - Fewer than 3 total entries in a session with >5 commits (under-logging)
+2. **Periodic flush verification:** Check if MEMORY.md has been updated this session
+   (look for today's date or new content). Check if HANDOFF.md has a session entry for today.
+   If either is missing → GAPS FOUND.
+3. **STANDARD entries need promotion:** If any STANDARD entries in the ledger have
+   "Applies to: all projects" or similar global scope, verify they were added to global
+   CLAUDE.md Stack-Specific Build Gotchas. If not → flag for promotion.
+4. **BLOCKER entries need TODO.md:** If any BLOCKER entries in the ledger, verify each
+   has a corresponding entry in TODO.md. If not → GAPS FOUND.
+5. **Lesson quality:** For each LESSON entry, verify it has both a "Root cause" and a "Rule"
+   field. Lessons without prevention rules are incomplete.
+6. **Compression recovery readiness:** If this was a long session (>10 ledger entries),
+   verify the ledger has enough context that a post-compression Claude could resume work.
+   Check: are the most recent 5 entries self-explanatory without prior context?
+
+REPORT FORMAT:
+## Continuity Audit — [project-slug] (Session End)
+**Ledger entries:** [total] ([breakdown by category])
+**Completeness:** [PASS / GAPS FOUND]
+**Unflushed standards:** [list or "none"]
+**Missing TODO items:** [list or "none"]
+**Incomplete lessons:** [list or "none"]
+**Compression readiness:** [PASS / needs more context]
+
+Return: PASS, or GAPS FOUND with specific items to fix before closing.
+```
 
 **Architect review** (before writing any module code):
 ```
@@ -2231,6 +2313,7 @@ Return: PASS, or GAPS FOUND listing each missing/stale document with what needs 
 
 ### Invocation Rules
 
+- **Continuity review runs at BOTH session start AND end.** At start: confirms ledger, reports prior state, flags gaps. At end: audits ledger completeness, checks for unflushed knowledge. This is the bookend that wraps every session. **The start review is the FIRST thing Claude does.** The end review runs alongside the docs agent before final push.
 - **Architect review blocks BUILDING.** No module code is written until architect review passes. Scaffolding and type files (`src/types/{module}.ts`) are exempt.
 - **Security review blocks merging to `main`.** New API routes do not ship without a security review pass. Admin-only internal routes may be waived with explicit HANDOFF.md notation.
 - **QA review is required before client-facing features ship.** Internal-only MVP phases may proceed without QA review — it becomes mandatory when clients can access the feature.
