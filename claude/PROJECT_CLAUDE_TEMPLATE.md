@@ -1,62 +1,30 @@
-# [PROJECT NAME] — Project-Specific Claude Code Instructions
-<!-- Copy this file to your project root as CLAUDE.md -->
-<!-- Keep this file SHORT. Only put project-specific rules here. -->
-<!-- Global standards (security, workflow, Windows/OneDrive, commit discipline, session protocols) -->
-<!-- are defined in the global template and inherited automatically. -->
+# [PROJECT NAME] -- Project-Specific Claude Code Instructions
 
-**Global template version:** v5.0
-**Based on:** `application-templates/claude/CLAUDE.md`
-
----
+> Global rules loaded dynamically from Core DB via `~/.claude/CLAUDE.md` (v9.0 bootloader).
+> Project-specific rules below override global rules where they conflict.
 
 ## Project Type
-
 **Type:** [Platform Product | Website / Standalone | Static PWA | Infrastructure | Script / Pipeline]
-
-<!-- Platform Product: uncomment and fill in -->
-<!-- White-label [describe] SaaS. NexusBlue owns the platform. `organizations` table required. -->
-<!-- `organization_id` on all data tables. Three-tier RLS (service_role → nexusblue_admin → org member). -->
-<!-- [Client Name] is org #1. No self-signup — admin creates all accounts. -->
-
-<!-- Website / Standalone: uncomment and fill in -->
-<!-- Single-tenant [describe] for [Client Name]. Standard Supabase RLS (user → own data). -->
-<!-- No `organizations` table. No `organization_id` on data tables. -->
-
-<!-- Static PWA: uncomment and fill in -->
-<!-- Client-side only. No auth, no database, no backend. Hosted on GitHub Pages. -->
-
----
+[One line describing the project type context. E.g., "Single-tenant website for [Client]. No auth, no database schema, no seed accounts."]
 
 ## Project Identity
 
 ```
-What:    [One-sentence description of what this project is]
+What:    [One-sentence description]
 Client:  [Client / Owner name]
 Repo:    https://github.com/NexusBlueDev/[REPO-NAME]
 Live:    [URL or "not deployed"]
-Stack:   [Key technologies — only what differs from or adds to the global stack]
+Stack:   [Key technologies]
 ```
 
----
-
-## Workflow Rules
-
-<!-- Only include rules that OVERRIDE or ADD TO the global workflow. -->
-<!-- "Always commit before any task is complete" is already global — don't repeat it. -->
-
-- [Any project-specific workflow rule]
-- [e.g., "Run npm run build before every push"]
-
----
+## Project-Specific Rules
+- [Rules that only apply to THIS project, not covered by global rules]
+- [E.g., "All tables use `setup_` prefix" or "Fifth-grade writing level for all user-facing text"]
 
 ## Architecture
 
-<!-- Key things Claude needs to know to navigate this project. -->
-<!-- For complex projects, reference ARCHITECTURE.md. -->
-
 **Key files:**
-- `[file]` — [what it does]
-- `[file]` — [what it does]
+- `[file]` -- [what it does]
 
 **Conventions:**
 - [Project-specific naming or structural convention]
@@ -65,46 +33,15 @@ Stack:   [Key technologies — only what differs from or adds to the global stac
 
 ## Stack Specifics
 
-<!-- Only include what's specific to this project, beyond the global stack. -->
-
 ```
-Framework:     Next.js 15 + TypeScript
-Styling:       Tailwind v4
-Database/Auth: Supabase
-Hosting:       Vercel
-Node:          >=22.0.0
+Framework:     [e.g., Next.js 15 + TypeScript]
+Styling:       [e.g., Tailwind v4]
+Database/Auth: [e.g., Supabase]
+Hosting:       [e.g., Vercel | Droplet | GitHub Pages]
 ```
-
----
-
-## Seed Accounts
-
-<!-- Platform Product format: -->
-<!-- NexusBlue super-admin: nexusblue-admin@nexusblue.dev / NxB_dev_2026! -->
-<!-- Dev org accounts:      test-[role]@[slug].dev / NxB_dev_2026! -->
-<!-- Client initial:        [email] / TempPass1! (must_reset_pw=true — uncomment when onboarding) -->
-
-<!-- Website / Standalone format: -->
-<!-- Dev accounts:    test-[role]@[slug].dev / NxB_dev_2026! -->
-<!-- Client initial:  [email] / TempPass1! (must_reset_pw=true — uncomment when onboarding) -->
-
-Run `./scripts/seed-accounts.sh` to create all dev accounts.
-
----
-
-## Project-Specific Rules
-
-<!-- Rules that only make sense for this project. -->
-
-1. [Rule]
-2. [Rule]
 
 ---
 
 ## Notes for Future Sessions
 
-<!-- Important context that doesn't fit elsewhere. -->
-<!-- Migrate to HANDOFF.md if project-state related. -->
-<!-- Migrate to global template if applicable to all projects. -->
-
-- [Note]
+- [Important context that doesn't fit elsewhere]
