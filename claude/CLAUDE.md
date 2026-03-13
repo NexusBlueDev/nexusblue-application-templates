@@ -8,7 +8,7 @@
 > rules (182 total in Core DB, stack-filtered per session) and operational protocols (24 protocols)
 > are loaded dynamically at session start via the `rules-inject.sh` SessionStart hook.
 > Each session receives only rules matching its detected stack (e.g., global + stack:nextjs +
-> stack:supabase). The injection header reports "X of 181 rules loaded" to confirm filtering.
+> stack:supabase). The injection header reports "X of N total" to confirm stack filtering.
 > Manage at setup.nexusblue.ai/core. Project-specific rules in each project's `CLAUDE.md`
 > take precedence where they conflict.
 
