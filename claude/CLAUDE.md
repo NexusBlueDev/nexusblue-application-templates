@@ -5,9 +5,12 @@
 **Installed at:** `~/.claude/CLAUDE.md` — sync: `cp ~/dev/nexusblue-application-templates/claude/CLAUDE.md ~/.claude/CLAUDE.md`
 
 > **How this works:** This bootloader defines identity and architecture context. All enforcement
-> rules (181 rules) and operational protocols (24 protocols) are loaded dynamically from Core DB
-> at session start via the `rules-inject.sh` SessionStart hook. Manage at setup.nexusblue.ai/core.
-> Project-specific rules in each project's `CLAUDE.md` take precedence where they conflict.
+> rules (181 total in Core DB, stack-filtered per session) and operational protocols (24 protocols)
+> are loaded dynamically at session start via the `rules-inject.sh` SessionStart hook.
+> Each session receives only rules matching its detected stack (e.g., global + stack:nextjs +
+> stack:supabase). The injection header reports "X of 181 rules loaded" to confirm filtering.
+> Manage at setup.nexusblue.ai/core. Project-specific rules in each project's `CLAUDE.md`
+> take precedence where they conflict.
 
 ---
 
