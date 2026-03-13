@@ -5,7 +5,7 @@
 **Installed at:** `~/.claude/CLAUDE.md` — sync: `cp ~/dev/nexusblue-application-templates/claude/CLAUDE.md ~/.claude/CLAUDE.md`
 
 > **How this works:** This bootloader defines identity and architecture context. All enforcement
-> rules (181 total in Core DB, stack-filtered per session) and operational protocols (24 protocols)
+> rules (182 total in Core DB, stack-filtered per session) and operational protocols (24 protocols)
 > are loaded dynamically at session start via the `rules-inject.sh` SessionStart hook.
 > Each session receives only rules matching its detected stack (e.g., global + stack:nextjs +
 > stack:supabase). The injection header reports "X of 181 rules loaded" to confirm filtering.
@@ -61,14 +61,16 @@ Core Platform (invisible infrastructure — governed by founder + Claude)
 
 ## Workspace Registry
 
-| Workspace | Path | Purpose | Session Protocols? |
-|-----------|------|---------|-------------------|
-| **Projects** | `~/dev/{name}/` | Production codebases | Full (HANDOFF, TODO, docs gate) |
-| **Sandbox** | `~/sandbox/` | Planning & ideation | None (speed over polish) |
-| **Ops** | `~/ops/` | Incidents, runbooks, audits | None |
-| **Clients** | `~/clients/` | Pre-project client intelligence | None |
-| **Research** | `~/research/` | Tech evaluations, spikes | None |
-| **Scripts** | `~/scripts/` | Cross-project automation | None |
+**Governance rules inject in every session, in every workspace.** Security, architecture, process, and style rules apply everywhere via `rules-inject.sh`. Session protocols (HANDOFF.md, TODO.md, docs gate, Setup Copilot) are the workspace-specific layer.
+
+| Workspace | Path | Purpose | Governance Rules | Session Protocols |
+|-----------|------|---------|-----------------|-------------------|
+| **Projects** | `~/dev/{name}/` | Production codebases | All (stack-filtered) | Full (HANDOFF, TODO, docs gate, Setup Copilot) |
+| **Sandbox** | `~/sandbox/` | Planning & ideation | All (stack-filtered) | Setup Copilot only |
+| **Ops** | `~/ops/` | Incidents, runbooks, audits | Global only | None |
+| **Clients** | `~/clients/` | Pre-project client intelligence | Global only | None |
+| **Research** | `~/research/` | Tech evaluations, spikes | Global only | None |
+| **Scripts** | `~/scripts/` | Cross-project automation | Global only | None |
 
 Code → `~/dev/`. Ideas → `~/sandbox/`. Problems → `~/ops/`. Client context → `~/clients/`. "Should we use X?" → `~/research/`.
 
