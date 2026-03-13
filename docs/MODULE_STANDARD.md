@@ -1,10 +1,10 @@
 # NexusBlue Module Standard
 
-> **Version:** 1.4
+> **Version:** 1.5
 > **Applies to:** All feature modules in all NexusBlue Next.js + Supabase projects
 > **Canonical location:** `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md`
 > **Install to project:** `{project}/docs/modules/MODULE_STANDARD.md` (copy or symlink)
-> **Reference implementations:** WebMap (nexusblue-website), AppVault (nexusblue-website)
+> **Reference implementations:** WebMap (nexusblue-website), AppVault (nexusblue-website), Events & Attendance (nexusblue-website — module toggle reference)
 > **Related:** AGENT_STANDARD.md (for background automation), INTEGRATION_STANDARD.md (for external API connections)
 > **Project type note:** `organization_id` on module tables, the three-tier RLS policy template, and `{prefix}_usage.organization_id` are **Platform Product requirements only**. Website / Standalone projects omit these. See the Platform Architecture Standard in global `CLAUDE.md`.
 
@@ -505,6 +505,112 @@ Every module README must include a complete role capability matrix showing all r
 
 ---
 
+## Module Toggle Standard (Org + Person Entity Pages)
+
+Every module must be toggleable via the entity detail page. NexusBlue admins/employees control which orgs have which modules, and which people within those orgs can manage integration settings.
+
+### Architecture
+
+```
+module_permissions table          → org-level module enablement
+profiles.can_edit_integrations    → per-person integration settings access
+```
+
+Two levels of control, both managed from the Core → Entities detail page:
+
+| Entity Type | Panel | What It Controls |
+|------------|-------|-----------------|
+| **Organization** | ModulesPanel | Toggle modules on/off for the entire org |
+| **Person** (with login) | PersonModulesPanel | Toggle modules for the person's org + toggle integration settings access per person |
+
+### Server-Side Gating
+
+Every module provides two server-side gate functions:
+
+```typescript
+// src/lib/modules/permissions.ts
+
+/** Check if a module is enabled for an org — use in API routes and server components */
+export async function isModuleEnabled(organizationId: string, moduleKey: string): Promise<boolean>;
+
+/** Get all enabled module keys for an org */
+export async function getEnabledModules(organizationId: string): Promise<string[]>;
+
+/** Toggle a module on/off for an org (creates admin + employee permission rows) */
+export async function toggleModule(organizationId: string, moduleKey: string, enabled: boolean, setBy: string): Promise<void>;
+```
+
+**Every API route that serves module data MUST call `isModuleEnabled()` before processing.** Return 403 if not enabled. Public endpoints (like kiosk check-in) return a safe fallback (e.g., `{ found: false }`) instead of 403.
+
+### Client-Side Gating
+
+```typescript
+// In feature-provider.tsx
+const { hasModule } = useFeatures();
+
+// In components:
+import { useModule } from '@/components/providers/feature-provider';
+const enabled = useModule('contacts_attendance');
+
+// In sidebar nav items:
+{ label: 'Events & Attendance', href: '/admin/events-attendance', module: 'contacts_attendance' }
+```
+
+The `module` property on sidebar NavItems works alongside the existing `feature` property. Both are checked — the item is hidden if either gate fails.
+
+### Module Registration
+
+Every new module must be registered in the `AVAILABLE_MODULES` array in `entity-detail.tsx`:
+
+```typescript
+const AVAILABLE_MODULES = [
+  { key: 'contacts_attendance', label: 'Events & Attendance', description: 'Event check-ins, attendee tracking, Eventbrite/Mailchimp integrations' },
+  // Add new modules here
+];
+```
+
+### Toggle API Routes
+
+```
+GET  /api/admin/modules?org={orgId}    → { enabledModules: string[] }
+POST /api/admin/modules                → { organizationId, moduleKey, enabled }
+```
+
+Both require admin or employee role. The POST endpoint calls `toggleModule()` which upserts `module_permissions` rows for admin and employee roles when enabling, and sets `enabled: false` when disabling.
+
+### Person-Level Integration Access
+
+When viewing a person entity, the PersonModulesPanel fetches:
+1. The person's profile (via `/api/admin/profile/{id}`) to get `organization_id` and `can_edit_integrations`
+2. The org's enabled modules (via `/api/admin/modules?org={orgId}`)
+
+The panel shows:
+- Each module with an org-level toggle (same as the org entity page)
+- When a module is enabled, a nested "Integration Settings Access" toggle appears — controlling whether this person can manage API keys (Eventbrite, Mailchimp, etc.) for the module
+
+### Adding a New Module (Checklist)
+
+When adding a new module to the toggle system:
+
+1. **Seed `module_permissions`** in the module's core migration for existing orgs that should have it
+2. **Add to `AVAILABLE_MODULES`** in `entity-detail.tsx` with key, label, description
+3. **Add `isModuleEnabled()` check** to all module API routes
+4. **Add `module: 'module_key'`** to sidebar NavItem entries
+5. **Add realtime subscription** — already handled by feature-provider (subscribes to `module_permissions` table changes)
+6. **Document module_key** in the module's README under Feature Gates
+
+### Reference Implementation
+
+**Events & Attendance** (`contacts_attendance`) is the reference:
+- Migration: `094_module_permissions.sql`
+- Server gate: `src/lib/modules/permissions.ts`
+- Client gate: `useModule('contacts_attendance')` in feature-provider
+- API gates: `/api/checkin/route.ts`, `/api/meetings/today/route.ts`, `/api/checkin/lookup/route.ts`
+- Sidebar: `module: 'contacts_attendance'` on admin + employee nav items
+- Entity toggle: ModulesPanel (org) + PersonModulesPanel (person) in `entity-detail.tsx`
+
+---
+
 ## API Route Conventions
 
 ```typescript
@@ -625,4 +731,5 @@ A module is portable (can be lifted into another project) when:
 | 1.1 | 2026-02-28 | Added AI-first requirements, Monetization requirements (billing unit, usage table, admin tier control), Role Capability Matrix (module_permissions + module_defaults tables). Updated Required Files Checklist and Portability Checklist. |
 | 1.2 | 2026-02-28 | Clarified project type scope: `organization_id`, three-tier RLS template, and `{prefix}_usage.organization_id` are Platform Product requirements only — not applicable to Website / Standalone projects. Added reference to Platform Architecture Standard in global CLAUDE.md. |
 | 1.3 | 2026-03-01 | Added cross-references to AGENT_STANDARD.md and INTEGRATION_STANDARD.md. Updated "A module is NOT" section with explicit redirects to the correct standards for agents, integrations, and scripts. |
+| 1.5 | 2026-03-13 | Added Module Toggle Standard — complete pattern for org-level module enablement via entity detail page, person-level integration access, server/client gating, toggle API routes, adding-a-new-module checklist. Reference implementation: Events & Attendance. Facilitator portal removed — functionality moved to admin/employee portals with module gating. |
 | 1.4 | 2026-03-09 | Added Ownership Model section (MANDATORY). Two patterns: org-shared (resource shared by all org members) and person-owned (resource belongs to individual user). Person-owned tables require `user_id`, prohibit `UNIQUE(organization_id)`, use person-owned RLS template. Reference implementation: WebMap. Decision flowchart for choosing pattern. Updated Required Files Checklist and Portability Checklist. Origin: Grant Writer audit revealed `UNIQUE(organization_id)` on profiles forced one-per-org when the module should be per-person with multiple profiles. |
