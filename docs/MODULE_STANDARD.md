@@ -1,6 +1,6 @@
 # NexusBlue Module Standard
 
-> **Version:** 1.7
+> **Version:** 1.8
 > **Applies to:** All feature modules in all NexusBlue Next.js + Supabase projects
 > **Canonical location:** `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md`
 > **Install to project:** `{project}/docs/modules/MODULE_STANDARD.md` (copy or symlink)
@@ -199,6 +199,20 @@ When adding a new table to a module, ask:
 2. **Does this data belong to one person's workspace or workflow?** → **Person-owned** (profiles, scans, drafts, workbenches)
 3. **Is this a configuration/infrastructure resource?** → **Org-shared** (integration settings, field definitions)
 4. **Can a person have multiple of these for different purposes?** → **Person-owned** (definitely not `UNIQUE(organization_id)`)
+
+#### Known Ownership Deviations
+
+Some modules deviate from the standard two-pattern model. These are documented exceptions, not templates for new modules.
+
+| Module Prefix | Deviation | Reason |
+|--------------|-----------|--------|
+| `cc_` (Email Command Center) | Uses `owner_id` instead of `organization_id` for primary isolation | Personal email data belongs to the individual mailbox owner, not the org. Org-level aggregation is a secondary view, not the isolation boundary. |
+| `pi_` (Pricing Intelligence) | Mixed public/private pattern: global catalogs are org-independent | Model pricing catalogs (`pi_model_pricing`, `pi_product_catalog`) are NexusBlue-maintained reference data shared across all tenants. Tenant-specific quotes and overrides use standard `organization_id` isolation. |
+
+**Rules for deviations:**
+- New modules must use the standard patterns (org-shared or person-owned). Do not copy these deviations.
+- If a new module genuinely needs a different isolation model, document it here before writing the migration. Architect review must approve.
+- Deviations must be declared in SCHEMA.md with rationale per table.
 
 #### Person-Owned RLS Template
 
@@ -862,10 +876,35 @@ When migrating module data to Core primitives, use backward-compatible views.
 
 ---
 
+## Extract-Before-Build (Rule #188)
+
+Before building any new module capability, search for existing implementations first. This prevents rebuilding what already exists and ensures the platform accumulates value rather than duplication.
+
+**Required steps (document results in module README "Decisions" table):**
+
+1. **Search internal projects.** Search all projects in `~/dev/` for existing implementations of the same pattern. If found, extract and generalize rather than rebuild.
+2. **Search open-source.** Search for libraries, SaaS APIs, or third-party tools that solve the problem. Evaluate for performance, security, data sovereignty (Rules #191, #192), and maintenance burden.
+3. **Document the decision.** In the module README "Decisions Made" table, record what was searched, what was found, and why build/buy/reuse was chosen.
+
+**Decision matrix:**
+
+| Finding | Action |
+|---------|--------|
+| Exact match in another NexusBlue project | Extract to `@nexusbluedev/core` or shared lib. Do not copy-paste. |
+| Partial match (70%+ overlap) | Extend the existing implementation. Flag to human before duplicating. |
+| Open-source library available | Evaluate: Does it meet data sovereignty requirements? Is it actively maintained? Does it avoid vendor lock-in (Rule #124)? |
+| SaaS API available | Classify per Rule #191 before adoption. DPA required if processing client data (Rule #192). |
+| Nothing found | Proceed with new build. Document the search in README. |
+
+**This is a planning gate.** The architect review (Rule #69) checks that extract-before-build was performed.
+
+---
+
 ## Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.8 | 2026-03-15 | Added Known Ownership Deviations (cc_ personal email isolation, pi_ mixed public/private catalogs) to Ownership Model section. Added Extract-Before-Build section (Rule #188) with decision matrix and planning gate enforcement. Updated docs agent prompt to check for v1.8 sections (Rule #181). |
 | 1.7 | 2026-03-15 | Bug fixes: Fixed `{prefix}_usage` FK from `profiles(id)` to `organizations(id)`. Added `user_id` to usage table template (Rule #101). Added data classification requirement to SCHEMA.md template (Rule #8). Added composition_rules example to Core Module Contract section. Added deprecation procedure to Module Lifecycle. Clarified `{prefix}_usage` vs `platform_usage_events` relationship. |
 | 1.6 | 2026-03-15 | Platform Correction: Added Phase Scope Gates (Rule #186), Core Module Contract compliance (Rule #187), Billing Attribution (Rule #189), Cost Estimation (Rule #190), View Pattern Standard (Q8). Added domain complexity classification, progressive justification thresholds, decomposition check at 20+ tables. |
 | 1.0 | 2026-02-28 | Initial standard — derived from WebMap + AppVault patterns |
