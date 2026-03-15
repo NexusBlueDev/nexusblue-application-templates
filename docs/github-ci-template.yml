@@ -52,6 +52,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Security audit
         run: npm audit --audit-level=high || true
