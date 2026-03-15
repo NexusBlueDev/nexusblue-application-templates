@@ -1,6 +1,6 @@
 # NexusBlue Module Standard
 
-> **Version:** 1.5
+> **Version:** 1.6
 > **Applies to:** All feature modules in all NexusBlue Next.js + Supabase projects
 > **Canonical location:** `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md`
 > **Install to project:** `{project}/docs/modules/MODULE_STANDARD.md` (copy or symlink)
@@ -723,10 +723,109 @@ A module is portable (can be lifted into another project) when:
 
 ---
 
+## Phase Scope Gates (Rule #186)
+
+Modules must stay within scope limits per development phase. This prevents the pattern of shipping 30+ tables at Phase 0 when only 8-12 are needed for MVP.
+
+**Domain Complexity Classification (declare in module README):**
+
+| Classification | Phase 0 Max Tables | Examples |
+|---------------|-------------------|---------|
+| Standard domain | 8-12 | CRM, social media, chat, events, marketing |
+| Complex domain | 12-16 | Commerce, healthcare, legal, financial |
+| Platform primitive | 3-6 | Scheduling, offline queue, media, PDF |
+
+**Scope escalation path:**
+- **Baseline:** Build within your classification limit. No justification needed.
+- **Extended (+8 tables):** Document in README: (1) why these cannot defer to Phase 1, (2) which are core domain vs supporting infrastructure, (3) whether any duplicate Core capabilities. Architect review must approve.
+- **Large (20+ tables):** Requires founder approval + decomposition check. "Should this be multiple modules with composition rules?"
+
+**Configuration data (pricing tiers, model pricing, capability limits) must use code constants or Core tables at Phase 0, not module-specific tables.**
+
+---
+
+## Core Module Contract (Rule #187)
+
+Every module must implement `ModuleDefinition` from `@nexusbluedev/core/modules`.
+
+**Required implementations:**
+
+| Requirement | What It Does | Why |
+|------------|-------------|-----|
+| `operations[]` via `registerOperation()` | AI agents discover available actions | AI-first architecture (Rule #184) |
+| `composition_rules[]` | Cross-module event wiring (declarative, no hardcoded imports) | Module interoperability |
+| `platform_usage_events` billing | Unified billing table for all modules | Revenue attribution, invoice rollup |
+| `exportData(ctx, tenantId)` | GDPR data export per tenant | Rule #108 compliance |
+| `deleteData(ctx, tenantId)` | GDPR data deletion per tenant | Rule #108 compliance |
+| `requireCapability()` on every route | Feature gating per org per person | Rule #99 compliance |
+| `healthCheck()` | Returns operational metrics (last run, error rate) | Module monitoring |
+
+**Retrofit rule:** Existing modules adopt the Contract when next actively developed. Not a standalone retrofit sprint.
+
+**Reference implementation:** Chat module in `@nexusbluedev/core/chat` (7 operations, 3 composition rules, 3 capabilities, lifecycle functions).
+
+---
+
+## Billing Attribution (Rule #189)
+
+Every module README must include a **Billing** section before implementation:
+
+```markdown
+## Billing
+
+- **Billing unit:** [what is counted, e.g., "published post", "contact", "scan"]
+- **Billing target:** Organization context active at time of action
+- **Multi-org handling:** billing_org_id override for delegated partner work (null = tenant_id)
+- **Tier limits:** [which plan tiers include this, usage caps per tier]
+```
+
+All billable actions write to `platform_usage_events` with: `tenant_id`, `user_id`, `billing_org_id`, `module_id`, `operation_id`, `unit`, `quantity`, `estimated_cost_usd`.
+
+---
+
+## Cost Estimation (Rule #190)
+
+Every module README must include a **Cost Estimation** section:
+
+**Before code (planning gate):**
+```markdown
+## Cost Estimation (Pre-Build)
+
+| Operation | Model | Est. Tokens (in/out) | Cost/Op | Infra Cost | Total |
+|-----------|-------|---------------------|---------|------------|-------|
+| [operation] | [Haiku/Sonnet] | [in/out] | [$X.XX] | [$X.XX] | [$X.XX] |
+
+- **Suggested retail:** $X.XX per [unit]
+- **Partner wholesale:** $X.XX per [unit]
+- **Estimated margin:** XX%
+```
+
+**After Phase 0 (completion gate):**
+Validated estimate from real Langfuse data. Creates `pi_product_catalog` entry before Phase 1 begins.
+
+---
+
+## View Pattern Standard (Q8)
+
+When migrating module data to Core primitives, use backward-compatible views.
+
+**Naming:** `v_{module}_{entity}` (e.g., `v_backbone_contacts`, `v_gw_organizations`)
+
+**Rules:**
+- Views are read-only projections from `core_entities` into module-specific column shapes
+- Never write through views
+- Drop views when all consumers are migrated to Core SDK reads
+- Document views in SCHEMA.md with their source tables
+
+**Existing examples:** `v_ca_contacts`, `v_profiles`, `v_organizations`, `v_backbone_contacts`
+
+---
+
 ## Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.6 | 2026-03-15 | Platform Correction: Added Phase Scope Gates (Rule #186), Core Module Contract compliance (Rule #187), Billing Attribution (Rule #189), Cost Estimation (Rule #190), View Pattern Standard (Q8). Added domain complexity classification, progressive justification thresholds, decomposition check at 20+ tables. |
 | 1.0 | 2026-02-28 | Initial standard — derived from WebMap + AppVault patterns |
 | 1.1 | 2026-02-28 | Added AI-first requirements, Monetization requirements (billing unit, usage table, admin tier control), Role Capability Matrix (module_permissions + module_defaults tables). Updated Required Files Checklist and Portability Checklist. |
 | 1.2 | 2026-02-28 | Clarified project type scope: `organization_id`, three-tier RLS template, and `{prefix}_usage.organization_id` are Platform Product requirements only — not applicable to Website / Standalone projects. Added reference to Platform Architecture Standard in global CLAUDE.md. |
