@@ -1,9 +1,10 @@
 # [APP NAME] — Project-Specific Claude Code Instructions
 # (Replace this header with your app name before using)
 
-## Workflow Rules
-- **Always commit and push to GitHub before any task is considered complete.**
-- Do not ask for approval before committing — authorized per established workflow.
+> Global rules loaded dynamically from Core DB via `~/.claude/CLAUDE.md` (v9.0 bootloader).
+> Project-specific rules below override global rules where they conflict.
+
+## Project-Specific Workflow
 - When bumping versions: update `?v=N` on ALL script/link tags in `index.html` AND bump `CACHE_NAME` in `sw.js`.
 
 ## Project

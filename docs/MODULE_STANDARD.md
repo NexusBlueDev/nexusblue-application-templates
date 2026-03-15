@@ -1,6 +1,6 @@
 # NexusBlue Module Standard
 
-> **Version:** 1.6
+> **Version:** 1.7
 > **Applies to:** All feature modules in all NexusBlue Next.js + Supabase projects
 > **Canonical location:** `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md`
 > **Install to project:** `{project}/docs/modules/MODULE_STANDARD.md` (copy or symlink)
@@ -411,17 +411,20 @@ Every module ships a `{prefix}_usage` table in its core migration:
 ```sql
 CREATE TABLE IF NOT EXISTS public.{prefix}_usage (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id  UUID NOT NULL REFERENCES public.profiles(id),
+  organization_id  UUID NOT NULL REFERENCES public.organizations(id),
+  user_id          UUID NOT NULL REFERENCES auth.users(id),  -- Rule #101: track individual actor
   billing_period   TEXT NOT NULL,  -- 'YYYY-MM'
   units_used       INT DEFAULT 0,
   unit_type        TEXT NOT NULL,  -- matches billing unit definition
   created_at       TIMESTAMPTZ DEFAULT now(),
   updated_at       TIMESTAMPTZ DEFAULT now(),
-  UNIQUE (organization_id, billing_period, unit_type)
+  UNIQUE (organization_id, user_id, billing_period, unit_type)
 );
 ```
 
-**Rule:** Increment usage on every billable action via a dedicated lib function. Metering is server-side only — never trust client counts.
+**Rule:** Increment usage on every billable action via a dedicated lib function. Metering is server-side only — never trust client counts. The `user_id` column is required by Rule #101 (every billable action must track the individual actor). The `organization_id` references `organizations(id)`, not `profiles(id)`.
+
+**Relationship to `platform_usage_events`:** The `{prefix}_usage` table is the module-level metering summary (aggregated counts per billing period). All billable actions also write to `platform_usage_events` (per-action detail with cost attribution). Both are required. `{prefix}_usage` powers module-level dashboards and caps. `platform_usage_events` powers cross-module billing, revenue attribution, and invoice generation.
 
 ### Standard Monetization Tiers
 
@@ -662,7 +665,9 @@ Required sections:
 ### SCHEMA.md
 Required sections:
 - One section per table with: field, type, notes columns
-- RLS summary table (role × table)
+- **Data classification per table** (Rule #8): `public`, `internal`, `confidential` (PII), or `restricted` (PHI/financial). Classification determines encryption, retention, access logging, and export rules. Tables without classification default to `confidential`.
+- **Ownership pattern per table**: `org-shared` or `person-owned` (see Ownership Model section)
+- RLS summary table (role x table)
 - Migration file references
 
 ### AGENTS.md (AI Modules)
@@ -699,6 +704,21 @@ Required sections:
 
 Do not move to BUILDING until PLANNING is complete.
 Do not move to LIVE until admin review flow works.
+
+### Deprecation Procedure (Stage 8)
+
+When a module reaches end of life:
+
+1. **Disable feature gates** -- set `is_active = false` in `features` table. Module disappears from UI.
+2. **Run `exportData()`** for every tenant that has data in the module. Provide exports to tenants.
+3. **Run `deleteData()`** per tenant request (Rule #108). Respect retention periods.
+4. **Remove sidebar entries** -- delete `module` property from NavItems.
+5. **Remove API routes** -- or return `410 Gone` with migration guidance.
+6. **Archive tables** -- rename with `_archived` suffix. Never DROP tables with tenant data.
+7. **Remove `module_defaults` and `module_permissions` rows** -- mark as `deprecated` if soft-delete preferred.
+8. **Update SCHEMA.md** -- mark all tables as "ARCHIVED: [date], reason: [why]".
+9. **Remove from `AVAILABLE_MODULES`** array in entity-detail.tsx.
+10. **Document in HANDOFF.md** -- which module, why deprecated, where data went.
 
 ---
 
@@ -759,6 +779,27 @@ Every module must implement `ModuleDefinition` from `@nexusbluedev/core/modules`
 | `deleteData(ctx, tenantId)` | GDPR data deletion per tenant | Rule #108 compliance |
 | `requireCapability()` on every route | Feature gating per org per person | Rule #99 compliance |
 | `healthCheck()` | Returns operational metrics (last run, error rate) | Module monitoring |
+
+**Composition rules example:**
+
+```typescript
+// src/lib/social-media/module.ts
+export const socialMediaModule: ModuleDefinition = {
+  id: 'social-media',
+  prefix: 'sm',
+  composition_rules: [
+    // When SocialAI qualifies a lead, create a contact in Contact Backbone
+    { on_event: 'sm.lead_qualified', target_module: 'backbone', action: 'create_contact', mapping: { source: 'lead_data', target: 'contact_fields' } },
+    // When Marketing Hub publishes content, SocialAI receives it for adaptation
+    { on_event: 'mh.content_approved', target_module: 'social-media', action: 'receive_content', mapping: { source: 'content', target: 'draft_post' } },
+    // When SocialAI publishes, emit event for analytics
+    { on_event: 'sm.post_published', target_module: 'analytics', action: 'record_publish', mapping: { source: 'post_data', target: 'event_payload' } },
+  ],
+  // ...operations, lifecycle functions
+};
+```
+
+Composition rules are declarative. Modules never import each other directly. The Composition Engine in `@nexusbluedev/core` wires events to actions at runtime based on these declarations.
 
 **Retrofit rule:** Existing modules adopt the Contract when next actively developed. Not a standalone retrofit sprint.
 
@@ -825,6 +866,7 @@ When migrating module data to Core primitives, use backward-compatible views.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.7 | 2026-03-15 | Bug fixes: Fixed `{prefix}_usage` FK from `profiles(id)` to `organizations(id)`. Added `user_id` to usage table template (Rule #101). Added data classification requirement to SCHEMA.md template (Rule #8). Added composition_rules example to Core Module Contract section. Added deprecation procedure to Module Lifecycle. Clarified `{prefix}_usage` vs `platform_usage_events` relationship. |
 | 1.6 | 2026-03-15 | Platform Correction: Added Phase Scope Gates (Rule #186), Core Module Contract compliance (Rule #187), Billing Attribution (Rule #189), Cost Estimation (Rule #190), View Pattern Standard (Q8). Added domain complexity classification, progressive justification thresholds, decomposition check at 20+ tables. |
 | 1.0 | 2026-02-28 | Initial standard — derived from WebMap + AppVault patterns |
 | 1.1 | 2026-02-28 | Added AI-first requirements, Monetization requirements (billing unit, usage table, admin tier control), Role Capability Matrix (module_permissions + module_defaults tables). Updated Required Files Checklist and Portability Checklist. |
