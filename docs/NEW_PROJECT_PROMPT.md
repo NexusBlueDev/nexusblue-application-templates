@@ -63,12 +63,12 @@ Before writing any code, do the following in order:
 
 9. Create scripts/seed-accounts.sh:
    [If Platform Product:]
-   - nexusblue-admin@nexusblue.dev / NxB_dev_2026! (platform_role = nexusblue_admin)
-   - test-[role]@[slug].dev / NxB_dev_2026! for each role
+   - nexusblue-admin@nexusblue.dev / NxBdev2026 (platform_role = nexusblue_admin)
+   - test-[role]@[slug].dev / NxBdev2026 for each role
    - Client initial accounts commented out with must_reset_pw=true placeholder
 
    [If Website / Standalone:]
-   - test-[role]@[slug].dev / NxB_dev_2026! for each role
+   - test-[role]@[slug].dev / NxBdev2026 for each role
    - Client initial accounts commented out with must_reset_pw=true placeholder
 
 10. [If Platform Product:] Prepare the organizations table SQL migration:
@@ -177,8 +177,8 @@ and confirm all checklist items above are done before starting feature work.
 
 ### Platform Product
 ```
-NexusBlue super-admin: nexusblue-admin@nexusblue.dev / NxB_dev_2026!
-Dev org accounts:      test-[role]@[slug].dev / NxB_dev_2026!
+NexusBlue super-admin: nexusblue-admin@nexusblue.dev / NxBdev2026
+Dev org accounts:      test-[role]@[slug].dev / NxBdev2026
 Client initial:        [client-email] / TempPass1! (must_reset_pw=true, commented out)
 ```
 
@@ -186,7 +186,7 @@ After seeding: `UPDATE profiles SET platform_role = 'nexusblue_admin' WHERE ...`
 
 ### Website / Standalone
 ```
-Dev accounts:    test-[role]@[slug].dev / NxB_dev_2026!
+Dev accounts:    test-[role]@[slug].dev / NxBdev2026
 Client initial:  [client-email] / TempPass1! (must_reset_pw=true, commented out)
 ```
 

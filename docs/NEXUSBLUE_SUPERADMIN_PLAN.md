@@ -18,7 +18,7 @@
 
 Update `scripts/seed-accounts.sh` in nexusblue-website to seed this account:
 ```bash
-create_user "bill@nexusblue.io" "NxB_dev_2026!" "Bill" "admin" false
+create_user "bill@nexusblue.io" "NxBdev2026" "Bill" "admin" false
 # Then: UPDATE profiles SET platform_role = 'nexusblue_admin' WHERE email = 'bill@nexusblue.io'
 ```
 
