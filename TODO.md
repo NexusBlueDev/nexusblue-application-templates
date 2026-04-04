@@ -69,11 +69,11 @@
 
 ---
 
-## Housekeeping (Independent — Any Time)
+## Housekeeping — DONE 2026-04-04
 
-- [ ] **[Dev]** Add preview domains to DOMAINS.md for any new Vercel-hosted projects.
-- [ ] **[Dev]** Set up SendGrid for **pw-app** email sharing (SENDGRID_API_KEY → Vercel env vars).
-- [ ] **[Dev]** Confirm nexusblue-website super-admin shares existing Supabase project (or create separate one).
+- [x] **[Dev]** Add preview domains to DOMAINS.md for any new Vercel-hosted projects — all Vercel projects already have preview entries, verified 2026-04-04
+- [x] **[Dev]** Set up SendGrid for **pw-app** email sharing — moved to pw-app project backlog (not a templates-repo concern) — done 2026-04-04
+- [x] **[Dev]** Confirm nexusblue-website super-admin shares existing Supabase project — confirmed: uses same nexusblue-website Supabase project (dev_* tables are lightweight metadata, no need for separate instance) — done 2026-04-04
 
 ---
 
