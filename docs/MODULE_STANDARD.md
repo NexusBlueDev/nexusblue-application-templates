@@ -1,6 +1,6 @@
 # NexusBlue Module Standard
 
-> **Version:** 1.8
+> **Version:** 1.9
 > **Applies to:** All feature modules in all NexusBlue Next.js + Supabase projects
 > **Canonical location:** `/home/nexusblue/dev/nexusblue-application-templates/docs/MODULE_STANDARD.md`
 > **Install to project:** `{project}/docs/modules/MODULE_STANDARD.md` (copy or symlink)
@@ -242,6 +242,159 @@ CREATE POLICY "Owner CRUD own {prefix}_{entity}"
   ON public.{prefix}_{entity} FOR ALL
   USING (user_id = auth.uid());
 ```
+
+### Project-Scoped Data Pattern (Platform Standard)
+
+> **Founder-approved: 2026-03-16.** All modules must follow this pattern.
+> **Canonical source:** `~/sandbox/plans/module-access-chain/README.md`
+
+Org-scoped data is the default. However, some data needs to be overridden at the **project** level — a project within an org may need its own brand voice, social profiles, content calendar, or configuration that differs from the org default.
+
+#### The `project_id` Column
+
+Every org-scoped module table that may need project-level override MUST include a nullable `project_id` column:
+
+```sql
+project_id UUID REFERENCES public.projects(id) DEFAULT NULL
+```
+
+- `project_id = NULL` → org-level data (the default, shared across all projects)
+- `project_id = '{uuid}'` → project-scoped override for that specific project
+
+**Required index:** Every table with `project_id` MUST have a composite index for the data resolution query pattern:
+
+```sql
+CREATE INDEX idx_{prefix}_{entity}_org_project
+  ON {prefix}_{entity} (organization_id, project_id);
+```
+
+**Which tables need `project_id`:** Declare in the module's `ModuleDefinition.project_scope.clone_tables` array. Only tables that hold configuration, content, or settings that a project might override need this column. Transaction/event/audit tables do NOT get `project_id`.
+
+#### The `project_modules` Table
+
+Project-level module enablement is governed by a platform table:
+
+```sql
+CREATE TABLE IF NOT EXISTS public.project_modules (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES public.organizations(id),
+  project_id      UUID NOT NULL REFERENCES public.projects(id),
+  module_key      TEXT NOT NULL,
+  enabled         BOOLEAN DEFAULT true,
+  override_mode   TEXT NOT NULL DEFAULT 'inherit'
+    CHECK (override_mode IN ('inherit', 'project_own')),
+  created_at      TIMESTAMPTZ DEFAULT now(),
+  updated_at      TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (project_id, module_key)
+);
+
+-- Denormalized organization_id enables direct RLS without joining through projects.
+-- Index supports RLS policy lookups and admin queries by org.
+CREATE INDEX idx_project_modules_org ON public.project_modules (organization_id);
+```
+
+| `override_mode` | Behavior |
+|----------------|----------|
+| `inherit` | Project uses org-level data. No project-scoped rows exist. |
+| `project_own` | Project has its own data. Copy-on-override clones org rows into project-scoped rows. |
+
+#### Copy-on-Override
+
+When a project switches from `inherit` to `project_own`:
+
+1. For each table in `ModuleDefinition.project_scope.clone_tables`:
+   - SELECT all rows WHERE `organization_id = {org_id} AND project_id IS NULL`
+   - INSERT copies with `project_id = {project_id}` (new UUIDs, preserve all other data)
+2. The project now has its own editable copy of the data
+3. Org-level data remains unchanged (other projects still inherit it)
+
+**Rule:** Copy-on-override MUST run inside a single database transaction. Partial clones leave projects in an inconsistent state.
+
+**Rule:** Copy-on-override is a one-time operation. After cloning, project data evolves independently. There is no sync-back mechanism.
+
+**Reverting `project_own` → `inherit`:** Set `archived_at = now()` on all project-scoped rows (soft-delete) and update `override_mode` back to `inherit`. Do not hard-delete project-scoped data — it may be needed for audit or re-activation.
+
+#### Data Resolution Pattern
+
+Every module's `getContext()` or data resolution functions MUST accept an optional `projectId` parameter and resolve data using this priority:
+
+```typescript
+// Data resolution order:
+// 1. If projectId is provided AND project_modules.override_mode = 'project_own':
+//    → return project-scoped rows (WHERE project_id = projectId)
+// 2. Otherwise:
+//    → return org-scoped rows (WHERE project_id IS NULL)
+
+async function getModuleData(
+  orgId: string,
+  options?: { projectId?: string }
+): Promise<ModuleData> {
+  if (options?.projectId) {
+    const projectModule = await getProjectModule(options.projectId, MODULE_KEY);
+    if (projectModule?.override_mode === 'project_own') {
+      return fetchData({ organization_id: orgId, project_id: options.projectId });
+    }
+  }
+  return fetchData({ organization_id: orgId, project_id: null });
+}
+```
+
+#### Access Resolution
+
+Module access checks MUST target the **org context** (the org being served), not the user's home org. This supports:
+
+- **`service_assignment`** relationships: a person from Org A providing services to Org B operates under Org B's module config
+- **`project_assignment`** relationships: a person assigned to a project operates under that project's module config (if `project_own`) or the project's parent org config (if `inherit`)
+
+#### Billing with Project Context
+
+All `emitUsage` functions must include:
+
+- `billing_org_id` — the org that pays (resolved via recursive `parent_org_id` walk up the org hierarchy)
+- `project_id` — the project context (if applicable), for cost attribution
+
+```typescript
+await emitUsage({
+  tenant_id: orgId,
+  user_id: userId,
+  billing_org_id: await resolveBillingOrg(orgId), // recursive parent walk
+  project_id: projectId ?? null,
+  module_id: MODULE_KEY,
+  operation_id: 'publish_post',
+  unit: 'published_post',
+  quantity: 1,
+  estimated_cost_usd: 0.02,
+});
+```
+
+#### Module Definition Declaration
+
+Every module declares project scope support in its `ModuleDefinition`:
+
+```typescript
+export const myModule: ModuleDefinition = {
+  id: 'my-module',
+  // ...existing fields...
+  project_scope: {
+    supported: true,
+    clone_tables: ['mm_config', 'mm_templates', 'mm_brand_voice'],
+    // Tables that get project_id column and are cloned on copy-on-override
+  },
+};
+```
+
+If `project_scope.supported` is `false` or omitted, the module does not participate in project-level overrides. All data is org-scoped only.
+
+#### Checklist for New Modules
+
+- [ ] Declare `project_scope` in `ModuleDefinition` (supported: true/false)
+- [ ] Add nullable `project_id` column to tables listed in `clone_tables`
+- [ ] All data resolution functions accept optional `projectId` parameter
+- [ ] `emitUsage` includes `billing_org_id` and `project_id`
+- [ ] Access checks use org context, not user's home org
+- [ ] SCHEMA.md documents which tables have `project_id` and why
+
+---
 
 ### Table Structure
 Every table follows this pattern:
@@ -753,6 +906,8 @@ A module is portable (can be lifted into another project) when:
 - [ ] Role capability matrix documented and enforced in API routes
 - [ ] Billing unit documented and usage incremented on every billable action
 - [ ] Standalone viability declared
+- [ ] `project_scope` declared in ModuleDefinition (supported: true/false)
+- [ ] If project_scope.supported: clone_tables listed, project_id columns added, data resolution accepts projectId
 - [ ] Documentation is current and accurate
 
 ---
@@ -904,6 +1059,7 @@ Before building any new module capability, search for existing implementations f
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.9 | 2026-04-04 | Added Project-Scoped Data Pattern (Platform Standard). Nullable `project_id` column on org-scoped tables, `project_modules` table for project-level enablement (with denormalized `organization_id` for RLS), copy-on-override pattern (must be transactional), revert policy (soft-delete via `archived_at`), required composite index `(organization_id, project_id)`, data resolution with optional `projectId`, billing with `billing_org_id` + `project_id`, access resolution targeting org context. Added `project_scope` to ModuleDefinition interface. Canonical source: `~/sandbox/plans/module-access-chain/README.md`. |
 | 1.8 | 2026-03-15 | Added Known Ownership Deviations (cc_ personal email isolation, pi_ mixed public/private catalogs) to Ownership Model section. Added Extract-Before-Build section (Rule #188) with decision matrix and planning gate enforcement. Updated docs agent prompt to check for v1.8 sections (Rule #181). |
 | 1.7 | 2026-03-15 | Bug fixes: Fixed `{prefix}_usage` FK from `profiles(id)` to `organizations(id)`. Added `user_id` to usage table template (Rule #101). Added data classification requirement to SCHEMA.md template (Rule #8). Added composition_rules example to Core Module Contract section. Added deprecation procedure to Module Lifecycle. Clarified `{prefix}_usage` vs `platform_usage_events` relationship. |
 | 1.6 | 2026-03-15 | Platform Correction: Added Phase Scope Gates (Rule #186), Core Module Contract compliance (Rule #187), Billing Attribution (Rule #189), Cost Estimation (Rule #190), View Pattern Standard (Q8). Added domain complexity classification, progressive justification thresholds, decomposition check at 20+ tables. |

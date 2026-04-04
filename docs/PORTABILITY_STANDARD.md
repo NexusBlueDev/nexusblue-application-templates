@@ -57,7 +57,7 @@ Every project must meet these criteria to be considered "portable":
 
 - [ ] `organization_id` on every data table — tenant isolation is DB-level, not platform-level
 - [ ] Three-tier RLS (service_role / nexusblue_admin / org member) — works on any Postgres
-- [ ] Brand config via `getBrandConfig()` — white-label ready via env vars
+- [ ] Brand config via `getBrandConfig()` — DB-driven dynamic pipeline (colors, fonts, assets, tagline)
 
 ### Optional (Enhance Portability)
 
@@ -94,15 +94,22 @@ generateSystemdTimer(cron)       // → systemd timer unit content
 
 **Pattern:** Define all schedules as a typed array in code. Generate platform-specific configs from the registry. The registry is the source of truth — `vercel.json` is a generated artifact.
 
-### `brand.ts` — White-Label Configuration
+### `brand.ts` — Dynamic Brand Pipeline
 
 ```typescript
-getBrandConfig()       // → { name, primaryColor, logoUrl, ... }
-getBrandCSSOverrides() // → CSS :root overrides string (empty if no custom brand)
-isWhiteLabel()         // → true if running with non-NexusBlue brand
+// DB-driven (preferred for platform products):
+createBrandConfigFetcher({ createServiceClient, orgId, defaults })
+  // → { getBrandConfig, brandToCSS, brandFontsUrl }
+
+getBrandConfig()    // → { tagline, industry, colors[], fonts[], assets[] } (cached 1hr)
+brandToCSS(brand)   // → CSS :root overrides string (colors + font variables)
+brandFontsUrl(brand) // → Google Fonts <link> URL or null
+
+// Legacy (env-var-based, for non-DB projects):
+getLegacyBrandConfig() // → { name, primaryColor, logoUrl, ... }
 ```
 
-**Pattern:** Reads `BRAND_*` env vars, falls back to NexusBlue defaults. Layouts inject CSS variable overrides for white-label deployments without code changes.
+**Pattern:** Product apps read brand identity from `org_brand*` tables. Root layout calls `getBrandConfig()`, injects CSS overrides via `<style>` tag, loads fonts via Google Fonts `<link>`, serves logos via asset proxy (`/api/brand/asset/[slot]`). Admin changes propagate on next page load via `revalidateTag("brand-config")`. Falls back to hardcoded defaults in `globals.css` when DB is unavailable. Reference implementation: 1Application.
 
 ### `llm.ts` — Multi-LLM Router (Phase 2)
 
