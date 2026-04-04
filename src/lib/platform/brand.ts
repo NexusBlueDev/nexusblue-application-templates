@@ -12,20 +12,8 @@
 import { unstable_cache } from "next/cache";
 
 // ── Supabase Client Interface ──
-// Minimal interface to avoid coupling to @supabase/supabase-js version.
-// Product apps pass their own createServiceClient — this just types the surface we use.
-
-interface SupabaseQueryBuilder {
-  select(columns: string): this;
-  eq(column: string, value: string): this;
-  order(column: string): this;
-  single(): Promise<{ data: Record<string, unknown> | null; error: unknown }>;
-  then: Promise<{ data: Record<string, unknown>[] | null; error: unknown }>["then"];
-}
-
-interface BrandSupabaseClient {
-  from(table: string): SupabaseQueryBuilder;
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BrandSupabaseClient = { from(table: string): any };
 
 // ── Types ──
 
@@ -130,7 +118,8 @@ export function createBrandConfigFetcher(opts: {
         }
       }
 
-      const applyProjectFilter = (query: SupabaseQueryBuilder) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const applyProjectFilter = (query: any) => {
         return projectFilter
           ? query.eq("project_id", projectFilter)
           : query;
