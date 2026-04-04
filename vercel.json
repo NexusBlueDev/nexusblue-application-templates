@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/portal-performance",
+      "schedule": "0 5 * * 0"
+    },
+    {
+      "path": "/api/cron/portal-roadmap",
+      "schedule": "0 6 * * 0"
+    },
+    {
+      "path": "/api/cron/portal-sync",
+      "schedule": "0 4 1 * *"
+    }
+  ]
+}

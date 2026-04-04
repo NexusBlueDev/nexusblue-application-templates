@@ -58,14 +58,14 @@
 
 ---
 
-## Phase 4 — Portal Agents
+## Phase 4 — Portal Agents — DONE 2026-04-04
 
 > Depends on: Phase 3 (at minimum Environment + Health sections live).
 > These write to `dev_*` tables and surface results in portal sections.
 
-- [ ] **[Dev]** **Roadmap agent** — triggered after architect/security/QA cycles. Reads `dev_agent_logs`, generates prioritized improvement suggestions → writes to `dev_roadmap_items`.
-- [ ] **[Dev]** **Performance agent** — weekly per live project. Fetches PageSpeed Insights, writes to `dev_performance_snapshots`, flags below-target metrics.
-- [ ] **[Dev]** **Sync agent** — monthly per Platform Product. Reads `_usage` tables from each product's Supabase, aggregates → writes to `dev_ai_usage_summary`.
+- [x] **[Dev]** **Roadmap agent** — triggered after architect/security/QA cycles. Reads `dev_agent_logs`, generates prioritized improvement suggestions → writes to `dev_roadmap_items` — done 2026-04-04
+- [x] **[Dev]** **Performance agent** — weekly per live project. Fetches PageSpeed Insights, writes to `dev_performance_snapshots`, flags below-target metrics — done 2026-04-04
+- [x] **[Dev]** **Sync agent** — monthly per Platform Product. Reads `_usage` tables from each product's Supabase, aggregates → writes to `dev_ai_usage_summary` — done 2026-04-04
 
 ---
 
