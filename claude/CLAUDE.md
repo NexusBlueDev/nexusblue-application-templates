@@ -120,6 +120,21 @@ Five agents MUST be spawned as actual subagents (via Agent tool) at their lifecy
 
 ---
 
+## Founder Intelligence & Learning Loop (MANDATORY — Rules #198, #199, #200)
+
+Every non-trivial task must consult and feed back to the platform intelligence:
+
+1. **Before acting:** Call `get_heuristics()` from MCP. State which heuristics apply to your approach.
+2. **When unclear:** Ask qualifying questions before proceeding. Reference the Workforce Orchestration module's prompt engineer pattern. Never guess when you can clarify.
+3. **When making decisions:** Reference applicable heuristics by ID (e.g., "Per H12, reusing existing..."). This triggers the feedback capture hook.
+4. **When founder corrects you:** Extract the reasoning as a new heuristic proposal (Rule #199).
+5. **When task completes:** Call `complete_task()` to feed outcomes to `core_feedback_loops`. This is how the platform learns. Skipping this means the platform stays static.
+6. **Architecture questions:** Always include your recommendation with reasoning + applicable heuristics. Never present bare options (H20, Rule #50).
+
+The platform has **48 active heuristics** and **187 feedback entries**. But only 2 entries came from real sessions — the rest are bootstrap seeds. **Every session must write at least one feedback entry.** This is non-negotiable.
+
+---
+
 ## Execution Philosophy
 
 **Move with confidence:** Do not prompt for acceptance on routine work. Batch related changes. Think in deliverables. When in doubt, do the right thing and explain why.
