@@ -33,7 +33,7 @@ export function ErrorBoundary({ error, reset, context = 'Application' }: ErrorBo
           Something went wrong
         </h2>
         <p className="text-sm text-muted-foreground">
-          An unexpected error occurred in {context.toLowerCase()}. Our team has been notified.
+          An unexpected error occurred in {context.toLowerCase()}. Please try again or contact support if the issue persists.
         </p>
         {error.digest && (
           <p className="text-xs text-muted-foreground font-mono">

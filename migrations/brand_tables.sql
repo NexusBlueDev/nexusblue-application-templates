@@ -4,9 +4,16 @@
 --
 -- Tables: org_brand, org_brand_colors, org_brand_fonts, org_brand_asset_slots, org_brand_assets
 -- Depends on: organizations table (or equivalent tenant table) with id UUID PK
+--
+-- RLS dependency: org_admin policies query public.profiles for role-based access.
+-- Required profiles schema: id UUID (= auth.uid()), organization_id UUID, role TEXT.
+-- Expected role values for admin access: 'admin', 'org_admin', 'owner'.
+-- If your project uses a different profiles schema, update the USING/WITH CHECK subqueries below.
 
 -- ============================================================
 -- 1. Brand tables
+-- Data classification: internal (brand identity — no PII)
+-- All tables in this migration are classified as 'internal'.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.org_brand (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -81,6 +88,13 @@ CREATE TABLE IF NOT EXISTS public.org_brand_assets (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Data classification (Rule #8): stored in DB for runtime introspection
+COMMENT ON TABLE public.org_brand IS 'data_classification: internal — org brand identity';
+COMMENT ON TABLE public.org_brand_colors IS 'data_classification: internal — brand color palette';
+COMMENT ON TABLE public.org_brand_fonts IS 'data_classification: internal — brand font configuration';
+COMMENT ON TABLE public.org_brand_asset_slots IS 'data_classification: public — platform-wide asset slot definitions';
+COMMENT ON TABLE public.org_brand_assets IS 'data_classification: internal — org brand asset references';
+
 -- ============================================================
 -- 2. RLS
 -- ============================================================
@@ -104,7 +118,9 @@ CREATE POLICY "read_org_brand_fonts" ON public.org_brand_fonts FOR SELECT TO ano
 CREATE POLICY "read_org_brand_asset_slots" ON public.org_brand_asset_slots FOR SELECT TO anon, authenticated USING (true);
 CREATE POLICY "read_org_brand_assets" ON public.org_brand_assets FOR SELECT TO anon, authenticated USING (true);
 
--- Org admin: manage own org brand
+-- Org admin: manage own org brand data
+-- Note: org_brand_asset_slots is a platform-level lookup table (no organization_id).
+-- Writes are service_role-only (defined above). Org admins can read but not modify slot definitions.
 CREATE POLICY "org_admin_brand" ON public.org_brand FOR ALL TO authenticated
   USING (organization_id IN (SELECT organization_id FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'org_admin', 'owner')))
   WITH CHECK (organization_id IN (SELECT organization_id FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'org_admin', 'owner')));

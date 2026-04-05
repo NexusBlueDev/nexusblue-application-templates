@@ -172,6 +172,10 @@ export async function GET(request: Request) {
       details: suggestions.map(s => `[${s.priority}] ${s.title}`).join('\n') || undefined,
     });
 
+    if (!logId) {
+      log.warn('Agent log write failed — roadmap items will have no agent_log_id link');
+    }
+
     // Write suggestions to dev_roadmap_items
     let inserted = 0;
     for (const suggestion of suggestions) {

@@ -30,6 +30,7 @@ export interface BrandFont {
   font_url: string | null;
   role: string;
   weights: string[];
+  sort_order: number;
 }
 
 export interface BrandAsset {
@@ -54,8 +55,8 @@ const DEFAULT_BRAND: BrandConfig = {
   industry: null,
   colors: [],
   fonts: [
-    { font_name: "Open Sans", font_source: "google", font_url: null, role: "heading", weights: ["400", "500", "600", "700"] },
-    { font_name: "Open Sans", font_source: "google", font_url: null, role: "body", weights: ["300", "400", "500", "600", "700"] },
+    { font_name: "Open Sans", font_source: "google", font_url: null, role: "heading", weights: ["400", "500", "600", "700"], sort_order: 0 },
+    { font_name: "Open Sans", font_source: "google", font_url: null, role: "body", weights: ["300", "400", "500", "600", "700"], sort_order: 1 },
   ],
   assets: [],
 };
@@ -128,7 +129,7 @@ export function createBrandConfigFetcher(opts: {
       const [brandRes, colorsRes, fontsRes, assetsRes] = await Promise.all([
         applyProjectFilter(supabase.from("org_brand").select("tagline, industry").eq("organization_id", opts.orgId)).single(),
         applyProjectFilter(supabase.from("org_brand_colors").select("hex_value, label, role, sort_order").eq("organization_id", opts.orgId)).order("sort_order"),
-        applyProjectFilter(supabase.from("org_brand_fonts").select("font_name, font_source, font_url, role, weights").eq("organization_id", opts.orgId)).order("sort_order"),
+        applyProjectFilter(supabase.from("org_brand_fonts").select("font_name, font_source, font_url, role, weights, sort_order").eq("organization_id", opts.orgId)).order("sort_order"),
         applyProjectFilter(supabase.from("org_brand_assets").select("slot_key, storage_path, external_url").eq("organization_id", opts.orgId)).eq("status", "active"),
       ]);
 

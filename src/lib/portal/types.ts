@@ -39,7 +39,7 @@ export interface RoadmapItem {
   priority: Priority;
   effort: Effort;
   source: 'agent';
-  agent_log_id: string;
+  agent_log_id: string | null;
   status: 'suggestion';
 }
 
