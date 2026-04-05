@@ -1,11 +1,11 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 9.0 (Core Rules Engine — Full Dynamic)**
+**Version: 9.1 (Core Rules Engine — Full Dynamic + Agent Orchestration)**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` — sync: `cp ~/dev/nexusblue-application-templates/claude/CLAUDE.md ~/.claude/CLAUDE.md`
 
 > **How this works:** This bootloader defines identity and architecture context. All enforcement
-> rules (182 total in Core DB, stack-filtered per session) and operational protocols (24 protocols)
+> rules (219 total in Core DB, stack-filtered per session) and operational protocols (28 protocols)
 > are loaded dynamically at session start via the `rules-inject.sh` SessionStart hook.
 > Each session receives only rules matching its detected stack (e.g., global + stack:nextjs +
 > stack:supabase). The injection header reports "X of N total" to confirm stack filtering.
@@ -76,10 +76,47 @@ Code → `~/dev/`. Ideas → `~/sandbox/`. Problems → `~/ops/`. Client context
 
 ---
 
+## Setup Copilot Is the Project Registry (MANDATORY)
+
+Every project in `~/dev/` and `~/sandbox/` MUST be registered in Setup Copilot at https://setup.nexusblue.ai. The `setup-copilot-sync.sh` SessionStart hook auto-creates sessions and injects live state (pending needs, open blockers, unread feedback, vault expiry, roadmap) into every session. **You must act on this injected state.**
+
+**During every session:**
+- **Push needs** when you discover missing env vars, API keys, or configs the human must provide
+- **Vault all secrets** — never store tokens only in `.env.local`; vault first, then write-env/vercel-sync
+- **Push blockers** immediately when you need human input, a decision, or a test verified
+- **Update roadmap** — seed phases at session start, mark tasks done as you complete them
+- **Address feedback** before starting new work — the human leaves feedback between sessions
+- **Sync to Vercel** after vaulting secrets for Vercel-deployed projects
+
+**Why:** The dashboard is how the human tracks progress between sessions. Any state that lives only in chat is LOST. Projects without Setup Copilot integration are invisible.
+
+**API:** `https://setup.nexusblue.ai/api/projects/{slug}/vault`, `/needs`, `/blockers`, `/vercel-sync`
+**DB:** Credentials in `~/dev/setup-copilot/.env.local` → `CORE_SUPABASE_SERVICE_ROLE_KEY`
+
+---
+
 ## HANDOFF.md Governs the Project
 
 HANDOFF.md = project status, decisions, what works, what's next, how to resume.
 CLAUDE.md = how Claude should behave. These serve different purposes. Both must be current.
+
+---
+
+## Orchestration Agents (MANDATORY — Rules #45, #52, #69, #89, #90)
+
+Five agents MUST be spawned as actual subagents (via Agent tool) at their lifecycle gates. **Do not skip these. Do not shortcut with `touch .flag`.** The flag file is the OUTPUT of the agent, not a bypass.
+
+| Agent | When | Gate Rule | Flag File |
+|-------|------|-----------|-----------|
+| **continuity** (start) | First action of every ~/dev/ session | Rule #89 | `.continuity-verified` |
+| **architect** | Before writing module/migration code | Rule #69 | `.architect-verdict.json` |
+| **security** | Before merging new API routes to main | Rule #52 | Security review in HANDOFF.md |
+| **docs** | Before every `git push` | Rule #45 | `.docs-verified` |
+| **continuity** (end) | Last action of every session | Rule #90 | Backlog verified in What's Next |
+
+**Spawn pattern:** Use `Agent tool` with the prompts defined in the `agent-orchestration` protocol. Get the full prompts via `get_protocol(slug: "agent-orchestration")` from the governance MCP server.
+
+**Never bypass:** `touch .docs-verified` without running the docs agent is governance theater. The agent must actually audit HANDOFF.md, TODO.md, project_library, and core_decisions before the flag is set.
 
 ---
 
