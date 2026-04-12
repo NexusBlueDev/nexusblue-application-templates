@@ -167,6 +167,50 @@ AI modules that process human data (face recognition, profiling, scoring, classi
 2. **Security review agent** checks: API routes match access matrix, no secrets in code, input validation on all endpoints
 3. **Docs enforcement agent** checks: all required security artifacts exist and are current
 
+## API Route Security Middleware (v2.0 — Core Security Module)
+
+Every API route in every NexusBlue project must use the security middleware from `@nexusbluedev/core/security`. This is enforced by governance rules and the `boundary-guard.sh` hook.
+
+### Required Middleware
+
+| Route Type | Required Middleware | Import |
+|---|---|---|
+| **Mutation (POST/PUT/PATCH/DELETE)** | `secureRoute()` or `withAuditEvent()` | `@nexusbluedev/core/security` |
+| **Public endpoint** | `withRateLimit()` | `@nexusbluedev/core/security` |
+| **Input-accepting** | `withValidation()` with Zod schema | `@nexusbluedev/core/security` |
+| **High-stakes AI** | `coreGroundedGenerate()` + `truthVerification: true` | `@nexusbluedev/core/ai` |
+
+### Example: Secured Route
+
+```typescript
+import { secureRoute } from '@nexusbluedev/core/security';
+import { z } from 'zod';
+
+const CreateSchema = z.object({ name: z.string(), email: z.string().email() });
+
+export const POST = secureRoute(async (req, data) => {
+  // data is typed as { name: string; email: string }
+  // Auth already verified, rate limit checked, body validated
+  return Response.json(await createContact(data));
+}, {
+  audit: { action: 'create', entityType: 'contacts' },
+  rateLimit: { authenticated: { requests: 50, windowMs: 60_000 } },
+  validation: CreateSchema,
+  requireAuth: true,
+  requireRole: ['admin', 'employee'],
+});
+```
+
+### .env.example Additions
+
+```
+# Langfuse observability (Tier 1 — required for AI routes)
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+LANGFUSE_HOST=https://langfuse.nexusblue.ai
+```
+
 ## Version History
 
+- v2.0 (2026-04-12) — Added API Route Security Middleware section. Core security module (`@nexusbluedev/core/security`): secureRoute, withAuditEvent, withRateLimit, withValidation. Governance-enforced via gate rules.
 - v1.0 (2026-03-04) — Initial standard established by BioGate module. STRIDE threat model format, security controls matrix format, penetration test plan template, incident response playbook, access control matrix, data flow security, bias testing framework.
