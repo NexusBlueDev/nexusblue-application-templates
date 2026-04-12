@@ -8,16 +8,18 @@
  *
  * Requires env:
  *   CRON_SECRET             — shared secret for cron auth
- *   ANTHROPIC_API_KEY       — Claude API for AI-powered analysis
  *   SUPABASE_SERVICE_ROLE_KEY — for reading/writing dev_* tables
+ *   (AI calls route through NAOL gateway — no direct API key needed)
  *
  * Data classification: internal (agent summaries, no PII)
  */
 
 import { NextResponse } from 'next/server';
+import { withAuditEvent } from '@nexusbluedev/core/security';
 import { createServiceClient } from '@/lib/supabase/server';
 import { resilientFetch } from '@/lib/resilient-fetch';
 import { logPortalAgentRun } from '@/lib/portal/log-agent';
+import { coreGenerate } from '@/lib/ai/naol';
 import { logger } from '@/lib/logger';
 import type { RoadmapCategory, Priority, Effort } from '@/lib/portal/types';
 
@@ -45,11 +47,8 @@ interface SuggestedItem {
 
 async function analyzeLogsWithAI(
   logs: Array<{ project_slug: string; project_id: string; agent_type: string; result: string; summary: string; details: string | null }>,
-  apiKey: string,
 ): Promise<SuggestedItem[]> {
-  const prompt = `You are a senior engineering advisor reviewing automated agent results for a software platform.
-
-Below are recent agent logs that found issues. Analyze them and produce a JSON array of the top improvement suggestions (max 5). Each suggestion should be:
+  const userMessage = `Below are recent agent logs that found issues. Analyze them and produce a JSON array of the top improvement suggestions (max 5). Each suggestion should be:
 - Actionable and specific
 - Prioritized by impact
 - Scoped to a single project
@@ -65,30 +64,17 @@ Respond ONLY with a JSON array. Each object must have:
 - priority (one of: critical, high, medium, low)
 - effort (one of: s, m, l, xl)`;
 
-  const res = await resilientFetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  }, {
-    retries: 2,
-    timeoutMs: 60_000,
-    circuitKey: 'anthropic',
+  // Route through NAOL gateway (Rule #217) — budget enforcement, circuit breaker, Langfuse tracing
+  const result = await coreGenerate({
+    model: 'haiku',
+    system: 'You are a senior engineering advisor reviewing automated agent results for a software platform.',
+    messages: [{ role: 'user', content: userMessage }],
+    module: 'portal',
+    taskType: 'analysis',
+    maxTokens: 2048,
   });
 
-  if (!res.ok) {
-    throw new Error(`Anthropic API returned ${res.status}`);
-  }
-
-  const data = await res.json();
-  const text = data.content?.[0]?.text ?? '';
+  const text = result.content ?? '';
 
   // Extract JSON array from response (handles markdown code blocks)
   const jsonMatch = text.match(/\[[\s\S]*\]/);
@@ -101,15 +87,9 @@ Respond ONLY with a JSON array. Each object must have:
 
 // ── Route Handler ──
 
-export async function GET(request: Request) {
+export const GET = withAuditEvent(async function GET(request: Request) {
   if (!verifyCronSecret(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    log.error('ANTHROPIC_API_KEY not configured');
-    return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 });
   }
 
   const supabase = createServiceClient();
@@ -162,7 +142,7 @@ export async function GET(request: Request) {
   });
 
   try {
-    const suggestions = await analyzeLogsWithAI(logsForAI, apiKey);
+    const suggestions = await analyzeLogsWithAI(logsForAI);
 
     // Log the roadmap agent run
     const logId = await logPortalAgentRun(supabase, {
@@ -222,4 +202,4 @@ export async function GET(request: Request) {
       error: err instanceof Error ? err.message : String(err),
     }, { status: 500 });
   }
-}
+}, { action: 'api_call', entityType: 'cron_portal_roadmap' });

@@ -129,7 +129,7 @@ Every non-trivial task must consult and feed back to the platform intelligence:
 3. **When making decisions:** Reference applicable heuristics by ID (e.g., "Per H12, reusing existing..."). This triggers the feedback capture hook.
 4. **When founder corrects you:** Extract the reasoning as a new heuristic proposal (Rule #199).
 5. **When task completes:** Call `complete_task()` to feed outcomes to `core_feedback_loops`. This is how the platform learns. Skipping this means the platform stays static.
-6. **Architecture questions:** Always include your recommendation with reasoning + applicable heuristics. Never present bare options (H20, Rule #50).
+6. **All questions and recommendations:** Always lead with your recommendation + reasoning + applicable heuristics. Never present bare options (H20, Rule #50, Rule #178). This applies to ALL communication — architecture, next steps, status updates, session kickoffs — not just formal architecture questions.
 
 The platform has **48 active heuristics** and **187 feedback entries**. But only 2 entries came from real sessions — the rest are bootstrap seeds. **Every session must write at least one feedback entry.** This is non-negotiable.
 
@@ -138,6 +138,8 @@ The platform has **48 active heuristics** and **187 feedback entries**. But only
 ## Execution Philosophy
 
 **Move with confidence:** Do not prompt for acceptance on routine work. Batch related changes. Think in deliverables. When in doubt, do the right thing and explain why.
+
+**"What's Next" block is mandatory (Rule #32 GATE, protocol `whats-next-block`):** After every completed task, output all 4 parts: what was done, remaining backlog, "I want to do:" with reasoning, "I am ready, do you agree?" This applies to all communication — architecture, next steps, status updates, session kickoffs. Never present bare options (Rules #50, #178, H20).
 
 **Never be reckless:** Destructive operations get a warning. Irreversible infrastructure changes get confirmation. Git is your safety net.
 

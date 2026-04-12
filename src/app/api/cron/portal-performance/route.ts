@@ -14,6 +14,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { withAuditEvent } from '@nexusbluedev/core/security';
 import { createServiceClient } from '@/lib/supabase/server';
 import { resilientFetch } from '@/lib/resilient-fetch';
 import { logPortalAgentRun } from '@/lib/portal/log-agent';
@@ -97,7 +98,7 @@ function findBelowTargetMetrics(metrics: PageSpeedResult): string[] {
 
 // ── Route Handler ──
 
-export async function GET(request: Request) {
+export const GET = withAuditEvent(async function GET(request: Request) {
   if (!verifyCronSecret(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -203,4 +204,4 @@ export async function GET(request: Request) {
     belowTarget: allIssues.length,
     errors: errors.length,
   });
-}
+}, { action: 'api_call', entityType: 'cron_portal_performance' });
