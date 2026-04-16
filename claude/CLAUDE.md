@@ -5,7 +5,7 @@
 **Installed at:** `~/.claude/CLAUDE.md` — sync: `cp ~/dev/nexusblue-application-templates/claude/CLAUDE.md ~/.claude/CLAUDE.md`
 
 > **How this works:** This bootloader defines identity and architecture context. All enforcement
-> rules (219 total in Core DB, stack-filtered per session) and operational protocols (28 protocols)
+> rules (237 total in Core DB, stack-filtered per session) and operational protocols (28 protocols)
 > are loaded dynamically at session start via the `rules-inject.sh` SessionStart hook.
 > Each session receives only rules matching its detected stack (e.g., global + stack:nextjs +
 > stack:supabase). The injection header reports "X of N total" to confirm stack filtering.
@@ -140,7 +140,7 @@ Every non-trivial task must consult and feed back to the platform intelligence:
 5. **When task completes:** Call `complete_task()` to feed outcomes to `core_feedback_loops`. This is how the platform learns. Skipping this means the platform stays static.
 6. **All questions and recommendations:** Always lead with your recommendation + reasoning + applicable heuristics. Never present bare options (H20, Rule #50, Rule #178). This applies to ALL communication — architecture, next steps, status updates, session kickoffs — not just formal architecture questions.
 
-The platform has **48 active heuristics** and **187 feedback entries**. But only 2 entries came from real sessions — the rest are bootstrap seeds. **Every session must write at least one feedback entry.** This is non-negotiable.
+The platform has **54 active heuristics** and **191 feedback entries**. But only 6 entries (3.1%) came from real sessions — the rest are bootstrap seeds. **Every session must write at least one feedback entry.** This is non-negotiable.
 
 ---
 

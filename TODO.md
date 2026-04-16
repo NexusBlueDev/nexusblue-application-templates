@@ -1,9 +1,23 @@
 # TODO — NexusBlue Environment (Cross-Project)
 
-> Last updated: 2026-03-01 (Phase 3 DONE — all 7 portal sections live)
+> Last updated: 2026-04-16 (Phase 5 platform integrity audit surfaced follow-ups)
 > These are actions required from the NexusBlue team or clients — NOT Claude tasks.
 > Project-specific TODOs live in each project's own TODO.md.
 > Items are ordered by dependency chain — earlier phases unblock later ones.
+
+---
+
+## Phase 5 — Platform Integrity Follow-ups (Active, seeded 2026-04-16)
+
+> Surfaced by the 2026-04-16 platform registry integrity audit. Slug normalization was completed this session; these items remain open.
+
+- [ ] **[Dev + Human]** `refuge-ridge` orphan — on disk with 1 open blocker but no `dev_projects` row. Decide: register, archive, or merge into another project. Blocker visible at setup.nexusblue.ai.
+- [ ] **[Dev]** Rename 3 disk directories to match lowercase registry slugs: `~/dev/NexusBlue-automation-backend` → `nexusblue-automation-backend`, `NexusBlue-automation-platform` → `nexusblue-automation-platform`, `NexusBlue-n8n-core-docs` → `nexusblue-n8n-core-docs`. Must scan hooks, VS Code workspaces, git remotes, and `~/.claude/` path configs before renaming. Defer until a dedicated tooling session.
+- [ ] **[Human]** nexusblue-website has **8 pending needs + 5 open blockers** — the hottest queue on the platform. Triage at setup.nexusblue.ai.
+- [ ] **[Dev]** Backfill `project_slug` on 22 of 49 `core_decisions` rows currently NULL (45% of table). Requires reading each decision body to infer the project — cannot be batch-automated.
+- [ ] **[Dev]** Deep-dive zero-coverage projects revealed by the audit. After slug normalization, re-run the registry coverage query and investigate each project that truly shows zero entries in `core_agents` / `eng_project_library` / `dev_service_registry` / `setup_vault` — distinguish "new project, nothing shipped yet" from "shipped but unregistered."
+- [ ] **[Dev]** FCE feedback loop health — only 6 of 191 `core_feedback_loops` entries (3.1%) came from real sessions. Investigate whether `complete_task()` is actually wired and firing at session end across projects, or if the MCP tool path is silently failing.
+- [ ] **[Dev]** 6-month retention: drop `_backup_slug_normalize_2026_04_16_*` backup tables in Core DB on or after 2026-10-16 (reminder).
 
 ---
 
