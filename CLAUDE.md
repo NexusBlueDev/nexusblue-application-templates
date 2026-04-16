@@ -15,3 +15,11 @@ Canonical source for CLAUDE.md bootloader, governance rules, hooks, and applicat
 ## Project-Specific Rules
 - This repo is the source of truth for `~/.claude/CLAUDE.md`. Changes here propagate to all projects.
 - The `claude/` directory contains the bootloader and hook scripts.
+
+## Setup Copilot
+- **Slug:** `nexusblue-application-templates` | **Dashboard:** https://setup.nexusblue.ai
+- Use `vault-get.sh` for ALL credentials — never grep .env.local for secrets
+- Push `setup_needs` when env vars or API keys are missing
+- Push `setup_blockers` when human input or decisions are needed
+- Update `setup_roadmap_phases/tasks` after each completed task
+- Check feedback at session start — the founder leaves notes between sessions

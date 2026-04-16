@@ -88,6 +88,15 @@ Every project in `~/dev/` and `~/sandbox/` MUST be registered in Setup Copilot a
 - **Address feedback** before starting new work — the human leaves feedback between sessions
 - **Sync to Vercel** after vaulting secrets for Vercel-deployed projects
 
+**After every commit — register what you built (Rules #221, #222 GATE):**
+- **Register agents** — new cron routes (`/api/cron/*`), library agents (`lib/agents/*`), AI handlers → INSERT into `core_agents`
+- **Register features** — shipped features, tools, patterns → INSERT into `eng_project_library`
+- **Register services** — new third-party SDKs (Stripe, Twilio, etc.) → verify in `dev_service_registry`
+- **Register env vars** — new `process.env.*` references → vault in `setup_vault`
+- **Register decisions** — architecture decisions → INSERT into `core_decisions`
+
+The `registry-gate.sh` hook scans every commit for unregistered items. The continuity agent END sweep (Rule #222) verifies all registries before session close. **If it's not in the registries, the platform can't track it, cost it, or govern it.**
+
 **Why:** The dashboard is how the human tracks progress between sessions. Any state that lives only in chat is LOST. Projects without Setup Copilot integration are invisible.
 
 **API:** `https://setup.nexusblue.ai/api/projects/{slug}/vault`, `/needs`, `/blockers`, `/vercel-sync`
@@ -154,6 +163,7 @@ The platform has **48 active heuristics** and **187 feedback entries**. But only
 - Sacrifice code quality for speed
 - Push to main without verifying the build passes
 - Mark a task complete without committing and pushing to GitHub
+- Start a local dev server or test on localhost — the founder cannot see it. Always push to prod/preview and test there. Never run `npm run dev` for testing purposes.
 
 ---
 

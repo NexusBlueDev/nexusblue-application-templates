@@ -8,7 +8,16 @@ Canonical source for CLAUDE.md bootloader, governance rules, hooks, and applicat
 
 ## Environment Status
 > **Branch:** master
-> **Last Active:** 2026-04-05
+> **Last Active:** 2026-04-13 (session recovery)
 
 ## How to Resume
 > Start by reading: HANDOFF.md -> CLAUDE.md
+
+---
+
+### Session Recovery Note (2026-04-13)
+- Previous session interrupted by server power cycle
+- **Uncommitted changes:**
+  - `CLAUDE.md` — Setup Copilot section appended (slug, vault, needs, blockers, roadmap, feedback instructions)
+  - `.docs-verified` — deleted (ephemeral flag from prior docs gate pass)
+- **First action:** Review and commit the pending CLAUDE.md update (Setup Copilot section)
