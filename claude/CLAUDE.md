@@ -1,8 +1,12 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 9.1 (Core Rules Engine — Full Dynamic + Agent Orchestration)**
+**Version: 9.2 (Core Rules Engine — Full Dynamic + Agent Orchestration)**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` — sync: `cp ~/dev/nexusblue-application-templates/claude/CLAUDE.md ~/.claude/CLAUDE.md`
+
+| Version | Date | Change |
+|---------|------|--------|
+| **9.2** | 2026-04-21 | Session-end protocol gains two mandatory steps: **1c** (architecture + code review at every close — check all changed files for bugs, architectural gaps, and gotcha rules) and **5b** (governance extraction — scan session learnings for new rules/heuristics, propose to user, insert on confirm). Both steps run every session on every project. Source: retail-product-label-system 2026-04-21. |
 
 > **How this works:** This bootloader defines identity and architecture context. All enforcement
 > rules (237 total in Core DB, stack-filtered per session) and operational protocols (28 protocols)
