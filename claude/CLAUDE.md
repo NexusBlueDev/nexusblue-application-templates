@@ -1,11 +1,12 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 9.2 (Core Rules Engine — Full Dynamic + Agent Orchestration)**
+**Version: 9.3 (Core Rules Engine — Full Dynamic + Agent Orchestration)**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` — sync: `cp ~/dev/nexusblue-application-templates/claude/CLAUDE.md ~/.claude/CLAUDE.md`
 
 | Version | Date | Change |
 |---------|------|--------|
+| **9.3** | 2026-04-22 | §5b governance extraction changed: heuristic candidates discovered at session close are now **auto-promoted** — evaluate via architecture review, INSERT into core_intelligence, call promote_heuristic() immediately. No founder confirmation gate. Founder reviews promotion log between sessions. Rule #234 encodes this. Source: nexusblue-core 2026-04-22. |
 | **9.2** | 2026-04-21 | Session-end protocol gains two mandatory steps: **1c** (architecture + code review at every close — check all changed files for bugs, architectural gaps, and gotcha rules) and **5b** (governance extraction — scan session learnings for new rules/heuristics, propose to user, insert on confirm). Both steps run every session on every project. Source: retail-product-label-system 2026-04-21. |
 
 > **How this works:** This bootloader defines identity and architecture context. All enforcement
