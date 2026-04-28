@@ -7,3 +7,8 @@
 .iag-classification
 .claude/settings.local.json
 .continuity-verified
+
+# Secrets
+.env
+.env.local
+.env*.local
