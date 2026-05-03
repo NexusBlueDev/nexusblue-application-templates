@@ -1,6 +1,8 @@
 # HANDOFF -- NexusBlue Application Templates
 
 ## Last Updated
+2026-05-03 -- **Session 99 (2026-05-03): Autonomous-First enforcement hooks.** `claude/hooks/autonomous-first-gate.sh` (PreToolUse Bash) blocks blocker pushes with no prior autonomous verification in session ledger. `claude/hooks/whats-next-gate.sh` updated with Rule #944f268c check flagging responses that ask human to verify things reachable autonomously (trigger.dev, DB, logs). Both wired in `~/.claude/settings.json`. Rule 944f268c + Heuristic ea04d5d3 in Core DB.
+
 2026-04-16 -- Platform registry integrity audit + slug normalization shipped
 
 ## Project State
