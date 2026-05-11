@@ -60,7 +60,7 @@ Core Platform (invisible infrastructure — governed by founder + Claude)
 
 **Session rules:** Never build module-specific foundational tables (use Core primitives). Never hardcode fields as columns (use field registry). Every entity has `tenant_id`. AI reads the field registry. Governance metadata on every entity. Solution packs are configuration, not code.
 
-**Reference:** `~/sandbox/plans/customer-operations-platform/PLATFORM_ARCHITECTURE_RECOMMENDATION.md`
+**Reference:** `~/sandbox/archive/customer-operations-platform/plans/PLATFORM_ARCHITECTURE_RECOMMENDATION.md`
 
 ---
 
