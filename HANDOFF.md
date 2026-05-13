@@ -1,6 +1,14 @@
 # HANDOFF -- NexusBlue Application Templates
 
 ## Last Updated
+2026-05-13 -- **Session 26 (nexusblue-website): Ported two CI standard scripts from nexusblue-website.**
+
+- `scripts/migration-impact-check.sh` — scans changed migrations for DROP TABLE/VIEW/CONSTRAINT/COLUMN; greps src/ for dead references. No deps (pure bash). Platform standard since Session 25.
+- `scripts/check-types-drift.sh` — calls Supabase Management API to generate fresh TypeScript types; diffs against committed `src/types/supabase.ts` baseline. No CLI needed (curl + python3). Gracefully skips if `SUPABASE_ACCESS_TOKEN` absent.
+- `docs/github-ci-template.yml` updated with Jobs 2b and 2c wiring both scripts. Projects set `SUPABASE_PROJECT_ID` env var and `SUPABASE_ACCESS_TOKEN` GitHub Secret to activate the type drift check.
+
+---
+
 2026-05-03 -- **Session 99 (2026-05-03): Autonomous-First enforcement hooks.** `claude/hooks/autonomous-first-gate.sh` (PreToolUse Bash) blocks blocker pushes with no prior autonomous verification in session ledger. `claude/hooks/whats-next-gate.sh` updated with Rule #944f268c check flagging responses that ask human to verify things reachable autonomously (trigger.dev, DB, logs). Both wired in `~/.claude/settings.json`. Rule 944f268c + Heuristic ea04d5d3 in Core DB.
 
 2026-04-16 -- Platform registry integrity audit + slug normalization shipped

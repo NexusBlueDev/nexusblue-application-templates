@@ -79,6 +79,46 @@ jobs:
           # NEXT_PUBLIC_SITE_URL: https://example.com
 
   # ─────────────────────────────────────────────
+  # Job 2b: Migration Impact Check
+  # Scans new/modified migrations for DROP TABLE/VIEW/CONSTRAINT/COLUMN and
+  # verifies no application code in src/ still references the dropped object.
+  # Prevents "migration drops a DB object → silent runtime break" regressions.
+  # Script: scripts/migration-impact-check.sh (platform standard — no deps).
+  # ─────────────────────────────────────────────
+  migration-impact-check:
+    name: Migration Impact Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for code references to dropped DB objects
+        run: bash scripts/migration-impact-check.sh
+
+  # ─────────────────────────────────────────────
+  # Job 2c: Supabase Type Drift Check
+  # Calls the Management API to generate fresh TypeScript types and diffs
+  # against the committed src/types/supabase.ts baseline.
+  # Requires SUPABASE_ACCESS_TOKEN GitHub Secret + SUPABASE_PROJECT_ID env var.
+  # Skips gracefully when token is absent — activate via scripts/check-types-drift.sh.
+  # Script: scripts/check-types-drift.sh (platform standard — curl + python3 only).
+  # ─────────────────────────────────────────────
+  types-drift-check:
+    name: Supabase Type Drift Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Supabase type drift
+        run: bash scripts/check-types-drift.sh
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: REPLACE_SUPABASE_PROJECT_ID  # e.g. lbmxueowhpecoqlyhdcs
+
+  # ─────────────────────────────────────────────
   # Job 2: Deploy Sandbox Preview
   # Runs on push to sandbox/* branches.
   # Vercel auto-generates a unique preview URL for each branch.
