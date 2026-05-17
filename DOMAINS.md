@@ -19,6 +19,8 @@
 | `pet-scheduler.nexusblue.ai` | pet-scheduler | dev | Pet Scheduler — staging/testing | 2026-03-04 |
 | `sectorius-website.nexusblue.ai` | sectorius-website | dev | Sectorius — staging/testing | 2026-03-04 |
 | `forge.nexusblue.ai` | nexusblue-forgeai | dev | ForgeAI Engineering Platform — staging/testing | 2026-03-06 |
+| `partner-hub.nexusblue.ai` | nexusblue-partner-hub | dev | Partner Agency Portal — staging/testing | 2026-05-17 |
+| `client-portal.nexusblue.ai` | nexusblue-client-portal | dev | Client Portal — staging/testing | 2026-05-17 |
 
 ## Production Domains
 
@@ -29,6 +31,8 @@
 | `sectorius.com` | sectorius-website | Sectorius (production) |
 | `beers-biz-checkin.nexusblue.ai` | beers-biz-dayton | Public check-in PWA, no auth |
 | `pw-app-tawny.vercel.app` | pw-app | Auto-assigned Vercel domain (production) |
+| `partners.nexusblue.ai` | nexusblue-partner-hub | Partner Agency Portal (production) |
+| `app.nexusblue.ai` | nexusblue-client-portal | Client Portal (production) |
 
 ## Reserved Slugs (do not reuse)
 
