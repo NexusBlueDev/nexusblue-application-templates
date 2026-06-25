@@ -1,11 +1,12 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 9.3 (Core Rules Engine — Full Dynamic + Agent Orchestration)**
+**Version: 9.4 (Session Start Protocol — Governance-First Order Enforced)**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` — sync: `cp ~/dev/nexusblue-application-templates/claude/CLAUDE.md ~/.claude/CLAUDE.md`
 
 | Version | Date | Change |
 |---------|------|--------|
+| **9.4** | 2026-06-25 | Session start protocol corrected: governance checks (`get_gate_rules` + `get_heuristics`) + feedback memories + process-health MUST run BEFORE the continuity agent — not after. The continuity agent is the last start step, not the first. Both continuity-start/SKILL.md and continuity-end/SKILL.md updated. Root cause: standard evolved but was never committed back to infrastructure. Source: nexusblue-ai-service 2026-06-25. |
 | **9.3** | 2026-04-22 | §5b governance extraction changed: heuristic candidates discovered at session close are now **auto-promoted** — evaluate via architecture review, INSERT into core_intelligence, call promote_heuristic() immediately. No founder confirmation gate. Founder reviews promotion log between sessions. Rule #234 encodes this. Source: nexusblue-core 2026-04-22. |
 | **9.2** | 2026-04-21 | Session-end protocol gains two mandatory steps: **1c** (architecture + code review at every close — check all changed files for bugs, architectural gaps, and gotcha rules) and **5b** (governance extraction — scan session learnings for new rules/heuristics, propose to user, insert on confirm). Both steps run every session on every project. Source: retail-product-label-system 2026-04-21. |
 
@@ -122,11 +123,23 @@ Five agents MUST be spawned as actual subagents (via Agent tool) at their lifecy
 
 | Agent | When | Gate Rule | Flag File |
 |-------|------|-----------|-----------|
-| **continuity** (start) | First action of every ~/dev/ session | Rule #89 | `.continuity-verified` |
+| **continuity** (start) | After governance fetch + process-health (see sequence below) | Rule #89 | `.continuity-verified` |
 | **architect** | Before writing module/migration code | Rule #69 | `.architect-verdict.json` |
 | **security** | Before merging new API routes to main | Rule #52 | Security review in HANDOFF.md |
 | **docs** | Before every `git push` | Rule #45 | `.docs-verified` |
 | **continuity** (end) | Last action of every session | Rule #90 | Backlog verified in What's Next |
+
+**Session start sequence — MANDATORY order (Rule #89):**
+
+The continuity agent is NOT the first action. These steps MUST run first, in this order:
+
+1. Call `get_gate_rules()` from governance MCP — load all mandatory gate rules
+2. Call `get_heuristics()` from governance MCP — load founder reasoning patterns
+3. Read ALL `memory/feedback_*.md` files — apply remembered corrections
+4. Run `bash ~/.claude/hooks/process-health.sh` — verify droplet health
+5. **THEN** invoke the `continuity-start` skill (spawns the audit agent, creates `.continuity-verified`)
+
+Skipping steps 1–4 is the most common session-start failure mode. The continuity agent loads project state; governance must be loaded before it so the agent operates with full rule context.
 
 **Spawn pattern:** Use `Agent tool` with the prompts defined in the `agent-orchestration` protocol. Get the full prompts via `get_protocol(slug: "agent-orchestration")` from the governance MCP server.
 
