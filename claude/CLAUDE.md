@@ -1,11 +1,13 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 9.4 (Session Start Protocol — Governance-First Order Enforced)**
+**Version: 9.6 (Research Session Model Routing — Mandatory)**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` — sync: `cp ~/dev/nexusblue-application-templates/claude/CLAUDE.md ~/.claude/CLAUDE.md`
 
 | Version | Date | Change |
 |---------|------|--------|
+| **9.6** | 2026-06-28 | Research session model routing standard added: bulk file reads and document extraction in Claude Code sessions must use ~/.claude/workflows/ (Haiku for extraction, Sonnet for synthesis, Opus for judgment). Governance heuristic 8d8f03f0 inserted. Source: richard-green-ghostwerks 2026-06-28. |
+| **9.5** | 2026-06-26 | Rule #32 / What's Next standard corrected: routine, required, local, reversible, or already-authorized actions must not ask for agreement; only genuine decisions, destructive operations, external/shared-state changes, high-blast-radius actions, or ambiguity require confirmation. Source: founder-directive 2026-06-26. |
 | **9.4** | 2026-06-25 | Session start protocol corrected: governance checks (`get_gate_rules` + `get_heuristics`) + feedback memories + process-health MUST run BEFORE the continuity agent — not after. The continuity agent is the last start step, not the first. Both continuity-start/SKILL.md and continuity-end/SKILL.md updated. Root cause: standard evolved but was never committed back to infrastructure. Source: nexusblue-ai-service 2026-06-25. |
 | **9.3** | 2026-04-22 | §5b governance extraction changed: heuristic candidates discovered at session close are now **auto-promoted** — evaluate via architecture review, INSERT into core_intelligence, call promote_heuristic() immediately. No founder confirmation gate. Founder reviews promotion log between sessions. Rule #234 encodes this. Source: nexusblue-core 2026-04-22. |
 | **9.2** | 2026-04-21 | Session-end protocol gains two mandatory steps: **1c** (architecture + code review at every close — check all changed files for bugs, architectural gaps, and gotcha rules) and **5b** (governance extraction — scan session learnings for new rules/heuristics, propose to user, insert on confirm). Both steps run every session on every project. Source: retail-product-label-system 2026-04-21. |
@@ -166,7 +168,7 @@ The platform has **54 active heuristics** and **191 feedback entries**. But only
 
 **Move with confidence:** Do not prompt for acceptance on routine work. Batch related changes. Think in deliverables. When in doubt, do the right thing and explain why.
 
-**"What's Next" block is mandatory (Rule #32 GATE, protocol `whats-next-block`):** After every completed task, output all 4 parts: what was done, remaining backlog, "I want to do:" with reasoning, "I am ready, do you agree?" This applies to all communication — architecture, next steps, status updates, session kickoffs. Never present bare options (Rules #50, #178, H20).
+**"What's Next" block is mandatory (Rule #32 GATE, protocol `whats-next-block`):** After every completed task, output all 4 parts: what was done, remaining backlog, "I want to do:" with reasoning, and a readiness/handoff line. Do **not** ask for agreement when the next step is routine, required, local, reversible, or already authorized. Ask for confirmation only when the next action is a genuine decision, destructive, external/shared-state changing, high-blast-radius, or ambiguous. This applies to all communication — architecture, next steps, status updates, session kickoffs. Never present bare options (Rules #50, #178, H20).
 
 **Never be reckless:** Destructive operations get a warning. Irreversible infrastructure changes get confirmation. Git is your safety net.
 
@@ -182,6 +184,36 @@ The platform has **54 active heuristics** and **191 feedback entries**. But only
 - Push to main without verifying the build passes
 - Mark a task complete without committing and pushing to GitHub
 - Start a local dev server or test on localhost — the founder cannot see it. Always push to prod/preview and test there. Never run `npm run dev` for testing purposes.
+
+---
+
+## Research Session Model Routing (ALL WORKSPACES — MANDATORY)
+
+NAOL governs AI calls inside product code. Claude Code research sessions have no equivalent — without this standard, every file read, extraction, and synthesis burns at the session model rate (Sonnet or Opus) regardless of task complexity. This wastes budget on work Haiku can do equally well.
+
+**The rule:** Research tasks must use model-routed workflows in `~/.claude/workflows/`. Never run bulk reads, extraction, or document analysis inline in a flat session.
+
+| Task Type | Workflow | Model | Effort |
+|---|---|---|---|
+| Read / extract from files | `doc-extraction` | Haiku | low |
+| Competitive intel capture | `competitive-analysis` | Haiku → Sonnet → Opus | low → medium → high |
+| Multi-doc research question | `research-harness` | Haiku → Sonnet → Opus | low → medium → high |
+| Single doc read (one file) | Inline is OK | Haiku preferred | low |
+| Architectural judgment only | `research-harness` mode=judge | Opus | high |
+
+**Available workflows** (`~/.claude/workflows/`):
+- `research-harness` — general multi-file research with full 3-tier routing
+- `doc-extraction` — bulk file reading, Haiku only, no synthesis
+- `competitive-analysis` — competitor file capture → feature matrix → strategic judgment
+
+**How to invoke:**
+```
+Workflow({ name: 'research-harness', args: { files: [...paths], question: '...', mode: 'full' } })
+Workflow({ name: 'doc-extraction', args: { files: [...paths], prompt: '...' } })
+Workflow({ name: 'competitive-analysis', args: { files: [...paths], competitors: [...], focus: '...', product_context: '...' } })
+```
+
+**Never do inline what a workflow can do cheaper.** The session model (Sonnet/Opus) is for synthesis, decisions, and orchestration — not for reading files.
 
 ---
 
