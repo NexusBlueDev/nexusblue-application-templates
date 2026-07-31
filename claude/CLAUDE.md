@@ -1,12 +1,16 @@
 # NexusBlue Dev Copilot — Global Claude Code Standards
 
-**Version: 9.6 (Research Session Model Routing — Mandatory)**
+**Version: 9.8 (Multi-LLM Model Selection Standard — per-task, provider-agnostic)**
 **Source of truth:** `github.com/NexusBlueDev/nexusblue-application-templates` → `claude/CLAUDE.md`
 **Installed at:** `~/.claude/CLAUDE.md` — sync: `cp ~/dev/nexusblue-application-templates/claude/CLAUDE.md ~/.claude/CLAUDE.md`
 
+**Hook scripts (S192, 2026-07-31):** the `claude/hooks/` mirror previously kept in this repo has been retired — it held only 2 of 48 live hook files and had drifted from what's actually running (proof this manual-copy pattern doesn't hold up under real use). The hook scripts referenced throughout this document (`rules-inject.sh`, `session-ledger*.sh`, `docs-gate.sh`, `boundary-guard.sh`, `iag-*.sh`, `governance-health.sh`, `process-health.sh`, etc.) now live as their own git-tracked working tree at `~/.claude/hooks` on the droplet, versioned at `github.com/NexusBlueDev/nexusblue-claude-hooks` (private). That repo *is* the live path — not a copy to sync from. This `CLAUDE.md` file keeps the manual `cp` pattern above (it's a single markdown doc a human edits deliberately, not 48 scripts read live by every session's hooks), but was out of sync with the installed v9.8 (this copy was v9.6) until this same reconciliation pass refreshed it.
+
 | Version | Date | Change |
 |---------|------|--------|
-| **9.6** | 2026-06-28 | Research session model routing standard added: bulk file reads and document extraction in Claude Code sessions must use ~/.claude/workflows/ (Haiku for extraction, Sonnet for synthesis, Opus for judgment). Governance heuristic 8d8f03f0 inserted. Source: richard-green-ghostwerks 2026-06-28. |
+| **9.8** | 2026-07-06 | Multi-LLM model selection standard: static upfront session routing tables replaced with per-task capability-tier selection at point of work; selection pool is provider-agnostic — no specific model or provider names in standards (they change); selection principle is right-fit for task success first, token efficiency second; rework costs more than the tier difference; monthly validation agent required to keep tier-to-model assignments current. Source: founder-directive 2026-07-06. |
+| **9.7** | 2026-07-03 | Session-start gains two mandatory steps: (a) Teams Plan verification — if process-health.sh shows LiteLLM routing, STOP and fix before any work proceeds; (b) Session Model Routing Plan — after Rule #32 block, output a table mapping each planned session action to its model + effort tier BEFORE starting the first task. Applies globally to ALL workspaces. Source: founder-directive 2026-07-03. |
+| **9.6** | 2026-06-29 | Session-start Rule #32 gap closed: after continuity agent returns READY, main session MUST immediately output Rule #32 block and proceed to first action — never ask "what are you thinking?" Both CLAUDE.md and continuity-start/SKILL.md updated. Source: founder-directive 2026-06-29. |
 | **9.5** | 2026-06-26 | Rule #32 / What's Next standard corrected: routine, required, local, reversible, or already-authorized actions must not ask for agreement; only genuine decisions, destructive operations, external/shared-state changes, high-blast-radius actions, or ambiguity require confirmation. Source: founder-directive 2026-06-26. |
 | **9.4** | 2026-06-25 | Session start protocol corrected: governance checks (`get_gate_rules` + `get_heuristics`) + feedback memories + process-health MUST run BEFORE the continuity agent — not after. The continuity agent is the last start step, not the first. Both continuity-start/SKILL.md and continuity-end/SKILL.md updated. Root cause: standard evolved but was never committed back to infrastructure. Source: nexusblue-ai-service 2026-06-25. |
 | **9.3** | 2026-04-22 | §5b governance extraction changed: heuristic candidates discovered at session close are now **auto-promoted** — evaluate via architecture review, INSERT into core_intelligence, call promote_heuristic() immediately. No founder confirmation gate. Founder reviews promotion log between sessions. Rule #234 encodes this. Source: nexusblue-core 2026-04-22. |
@@ -138,8 +142,21 @@ The continuity agent is NOT the first action. These steps MUST run first, in thi
 1. Call `get_gate_rules()` from governance MCP — load all mandatory gate rules
 2. Call `get_heuristics()` from governance MCP — load founder reasoning patterns
 3. Read ALL `memory/feedback_*.md` files — apply remembered corrections
-4. Run `bash ~/.claude/hooks/process-health.sh` — verify droplet health
+4. Run `bash ~/.claude/hooks/process-health.sh` — verify droplet health **AND confirm Claude Teams Plan is active**. Look for Teams Plan confirmation in output. If LiteLLM routing is detected instead of Teams Plan, **STOP immediately** — do not proceed with any work until routing is fixed. LiteLLM burns API credits; Teams Plan is the authorized billing model.
 5. **THEN** invoke the `continuity-start` skill (spawns the audit agent, creates `.continuity-verified`)
+6. **After continuity agent returns READY:** immediately output a Rule #32 block — (1) session start complete + "Teams Plan: active ✓" confirmed, (2) full verified backlog from HANDOFF.md + any Setup Copilot items, (3) "I want to do:" with the first action and reasoning — proceed without asking for confirmation unless it is destructive/external/ambiguous, (4) readiness/handoff line. **Never ask "what are you thinking for this session?" — that is a Rule #32 violation.**
+7. **Model Selection (per task, at point of work — NOT a session-level table):** Do not output a static routing table at session start. That table becomes stale before the first task runs and is compliance theater. Instead, state the model choice inline when starting each task: *"Model: [provider / tier] — [reason tied to this task's shape]."*
+
+**Selection pool is provider-agnostic.** All configured providers are in scope. Do not hardcode provider or model names in standards — they change as providers release new versions. Use capability tiers (see Multi-LLM Model Selection Standard).
+
+**Selection principle:** Match task complexity to the right capability tier. Under-speccing causes errors and rework. Over-speccing burns tokens on work that does not need it. Both are waste. Rework costs more than the marginal difference between tiers — do it right the first time. The goal is task success at appropriate cost, not lowest token price.
+
+**Capability tiers (provider- and model-agnostic):**
+- **Light / Fast** — deterministic, well-defined, low error cost, high-volume: bulk reads, extraction, structured transforms, simple classification
+- **Standard** — general generation, moderate complexity, standard error tolerance: code generation, analysis, review, API route writing, documentation
+- **Advanced** — high complexity, expensive errors, judgment required: architecture decisions, security review, strategic planning, ambiguous multi-step problems
+
+Current tier-to-model assignments are maintained by the monthly model validation agent (see Multi-LLM Model Selection Standard). Do not rely on hardcoded model names.
 
 Skipping steps 1–4 is the most common session-start failure mode. The continuity agent loads project state; governance must be loaded before it so the agent operates with full rule context.
 
@@ -184,6 +201,71 @@ The platform has **54 active heuristics** and **191 feedback entries**. But only
 - Push to main without verifying the build passes
 - Mark a task complete without committing and pushing to GitHub
 - Start a local dev server or test on localhost — the founder cannot see it. Always push to prod/preview and test there. Never run `npm run dev` for testing purposes.
+
+---
+
+## Content Ingestion Standards (ALL WORKSPACES — ~/dev/, ~/sandbox/, ~/research/, all new projects)
+
+Every call that writes text into an embedding pipeline must route through the chunked path when content may exceed **3,200 chars (~800 tokens)**. Applies to code, policy documents, standards, research findings, any text — not just prose.
+
+**Rule:** Use the chunked function when `content.length > CHUNK_DEFAULTS.CHUNK_SIZE_CHARS` (3,200).
+
+| Destination | Short (≤3,200 chars) | Long (>3,200 chars) |
+|---|---|---|
+| `core_intelligence` | `ingestKnowledge()` | `ingestKnowledgeChunked()` |
+| `platform_intelligence` | `ingestIntelligence()` | `ingestIntelligenceChunked()` |
+
+**Why:** Single-vector embeddings silently degrade RAG recall. `text-embedding-3-small` silently truncates at 8,192 tokens — wrong embeddings, no error.
+
+**Auto-routing pattern for every route accepting user content:**
+```typescript
+if (content.length > CHUNK_DEFAULTS.CHUNK_SIZE_CHARS) {
+  await ingestKnowledgeChunked(ctx, entry, undefined, embeddingConfig);
+} else {
+  await ingestKnowledge(ctx, entry, embeddingConfig);
+}
+```
+
+**Imports:** `ingestKnowledge, ingestKnowledgeChunked, ingestIntelligence, ingestIntelligenceChunked` from `@nexusbluedev/core/ai` | `CHUNK_DEFAULTS` from `@nexusbluedev/core/document-processing`
+
+**API route content limits:** Set `max` to 500,000 chars — chunker handles splitting, API boundary must not truncate.
+
+---
+
+## Multi-LLM Model Selection Standard (ALL WORKSPACES — MANDATORY)
+
+NexusBlue operates across multiple AI providers. Model selection — in session work, product code, and workflows — must evaluate the full available provider landscape and match the right capability tier to each task. Provider loyalty and familiarity with a specific model name are not selection criteria.
+
+**Selection principle:** Match task complexity and error tolerance to the right capability tier. The right model prevents errors and rework — rework always costs more than the marginal difference between tiers. Cost efficiency comes from getting it right the first time, not from always routing to the lowest tier.
+
+**Do not hardcode provider or model names in standards, NAOL config, or routing rules.** Models change. Providers release new versions. A model that was Advanced tier six months ago may be Standard tier today. Capability tiers are the durable standard; specific model assignments are implementation details maintained by the validation agent.
+
+**Capability tiers:**
+
+| Tier | Task Characteristics | Examples |
+|---|---|---|
+| **Light / Fast** | Deterministic, well-defined, low error cost, high-volume | Bulk reads, extraction, structured transforms, simple classification |
+| **Standard** | General generation, moderate complexity, standard error tolerance | Code generation, analysis, review, API calls, documentation |
+| **Advanced** | High complexity, expensive errors, judgment required, multi-step | Architecture, security review, strategic planning, ambiguous problems |
+
+**Monthly Model Validation Agent (mandatory platform infrastructure — Sprint D P17):**
+- Runs on a monthly cron schedule across all configured providers
+- Tests available models against a standardized benchmark task set for each capability tier
+- Evaluates: output quality, error rate, task success rate, cost-per-task, latency
+- Updates tier-to-model assignments in Core DB model registry
+- Publishes validation report to Setup Copilot dashboard for founder review
+- Creates a `setup_blocker` if routing changes are detected — no silent NAOL updates
+- Implementation: Trigger.dev scheduled task in `nexusblue-ai-service`, benchmark logic in `nexusblue-core/src/intelligence/benchmarks.ts`
+
+**Session work:** Per-task tier selection at point of work (Step 7 in Session Start). State tier + rationale inline.
+**Product code:** Route through NAOL (`lib/ai/naol.ts`). Tier assignments reference Core DB model registry — not hardcoded model strings.
+**Workflows:** Assign capability tier per agent() stage. Non-Claude providers in product pipelines go through NAOL.
+
+**What this standard prohibits:**
+- Upfront static session routing tables (stale before first task; compliance theater)
+- Defaulting to the session model without evaluating capability tier fit
+- Hardcoding specific model names or providers in routing standards or NAOL config
+- Routing to the lowest tier to minimize token cost when the task warrants a higher tier
 
 ---
 
