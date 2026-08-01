@@ -1,6 +1,8 @@
 # HANDOFF -- NexusBlue Application Templates
 
 ## Last Updated
+2026-07-31 -- **S192 (nexusblue-core, U9): Retired the drifted `claude/hooks/` mirror; resynced `claude/CLAUDE.md` v9.6->v9.8.** `claude/hooks/` held only 2 of 48 live hook scripts and had drifted three independent ways from the actual `~/.claude/hooks` working tree — proof the manual-copy sync model doesn't hold under real use (see nexusblue-core heuristic `7023a71e`). Hook scripts are now version-controlled in place at `github.com/NexusBlueDev/nexusblue-claude-hooks` (private), which IS the live `~/.claude/hooks` working tree, not a copy — this repo's bootloader now points there as source of truth for hook contents instead of bundling its own copy. `claude/CLAUDE.md` here was v9.6 vs v9.8 installed; resynced. Commit `4cf7d00`. No CI/architect/security review applicable (docs + one file removal, no code path changed).
+
 2026-05-13 -- **Session 26 (nexusblue-website): Ported two CI standard scripts from nexusblue-website.**
 
 - `scripts/migration-impact-check.sh` — scans changed migrations for DROP TABLE/VIEW/CONSTRAINT/COLUMN; greps src/ for dead references. No deps (pure bash). Platform standard since Session 25.
