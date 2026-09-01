@@ -62,12 +62,20 @@ checks as the required check, with `enforce_admins: false` so the owner's own di
 aren't blocked (see that template's branch-protection guidance). Turn on Code Owner review
 requirements only once a second maintainer actually exists to review against.
 
+## Scope: product/app repos, not shared platform infrastructure
+
+Rule #265 applies to product/app repos — each ships its own thing to its own users, so
+a missing CODEOWNERS/branch-protection setup is a real per-repo gap. `nexusblue-core` and
+`setup-copilot` are shared platform infrastructure with a different operating model
+(founder clarification, 2026-09-01) — their absence of CODEOWNERS is not a Rule #265 gap
+and is out of scope for this standard.
+
 ## Adoption status (as of 2026-09-01)
 
 | Repo | CODEOWNERS | Notes |
 |---|---|---|
 | `nexusblue-bluetalk` | Yes | Pre-existing, informal — not written against this standard, but compatible with it. |
 | `wrapops` | Yes | First repo onboarded against this standard. |
-| `nexusblue-core` | No | Gap — should adopt (it's the platform's own "brain" repo). |
-| `setup-copilot` | No | Gap — should adopt (it's the project registry). |
+| `nexusblue-core` | N/A | Shared platform infrastructure, not a product/app repo — out of scope. |
+| `setup-copilot` | N/A | Shared platform infrastructure, not a product/app repo — out of scope. |
 | All others | Unaudited | Sweep not yet run beyond core/setup-copilot/bluetalk/wrapops. |
