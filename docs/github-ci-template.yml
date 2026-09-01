@@ -19,6 +19,47 @@
 #   sandbox/*  → CI advisory (test failures don't block deploy), Vercel auto-preview URL
 #   dev        → CI required (tests must pass), deploys to [project].nexusblue.ai
 #   main       → CI required (tests must pass), deploys to production, creates release tag
+#
+# NPM_TOKEN / Rule #282 (only if this project depends on @nexusbluedev/core):
+# Every `npm ci` step above already references secrets.NPM_TOKEN. Three steps
+# are required in the consuming repo — missing any one causes a 401 in CI:
+#   1. .npmrc at repo root:
+#        @nexusbluedev:registry=https://npm.pkg.github.com
+#        //npm.pkg.github.com/:_authToken=${NPM_TOKEN}
+#   2. gh secret set NPM_TOKEN --body "$(gh auth token)" -R OWNER/REPO
+#      (established org pattern — the same GitHub PAT used for gh CLI auth,
+#      not a separate dedicated token; see Rule #305)
+#   3. Confirm every `npm ci` step in this workflow has NPM_TOKEN wired in
+#      its env block (already true in this template — don't drop it if you
+#      add a new job that also installs deps).
+# This was previously "each repo sets the secret ad hoc" with no documented
+# pattern anywhere — see nexusblue-application-templates setup_blockers
+# 1a6ff079 and wrapops CODEOWNERS_STANDARD.md for the discovery context.
+#
+# BRANCH PROTECTION (Rule #265, applies to product/app repos — not shared
+# platform infrastructure repos like nexusblue-core or setup-copilot, which
+# have their own operating model):
+# Once this workflow has run green at least once on the target branch, enable
+# protection with the job names above as required status checks:
+#   gh api -X PUT repos/OWNER/REPO/branches/main/protection \
+#     -H "Accept: application/vnd.github+json" --input - <<'JSON'
+#   {
+#     "required_status_checks": {"strict": true, "contexts": ["Lint · Typecheck · Test", "Build (env stubs)"]},
+#     "enforce_admins": false,
+#     "required_pull_request_reviews": null,
+#     "restrictions": null,
+#     "allow_force_pushes": false,
+#     "allow_deletions": false
+#   }
+#   JSON
+# enforce_admins MUST stay false for a solo-maintainer repo with no PR flow —
+# required status checks otherwise block a fresh commit pushed directly to
+# main (GitHub has no prior check result for a brand-new commit SHA). Admins
+# bypass the check requirement; non-admin collaborators would still need a
+# PR through a branch that's already gone green. Confirm the pusher's own
+# account is an admin before enabling: gh api repos/OWNER/REPO/collaborators/USER/permission.
+# Add "Migration Impact Check" / "Supabase Type Drift Check" to contexts too
+# if this project has Supabase migrations.
 
 name: CI
 
