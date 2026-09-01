@@ -1,0 +1,15 @@
+# CODEOWNERS — [Project Name] by NexusBlue
+#
+# Solo-maintainer repo (Rule #265). One owner today; path mapping is seeded
+# now so ownership can be split by module as the team grows without a
+# structural rewrite of this file.
+#
+# USAGE: Copy to CODEOWNERS at repo root. Replace the bracketed path list
+# below with this project's actual sensitive surfaces — see
+# docs/CODEOWNERS_STANDARD.md for guidance and real examples.
+
+* @wrmagnuson
+
+# [Category]-sensitive surfaces — flagged for extra scrutiny on review
+# even under the solo-maintainer exception (automated checks + self-review).
+# /path/to/sensitive/module/ @wrmagnuson
