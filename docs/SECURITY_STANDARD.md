@@ -210,7 +210,40 @@ LANGFUSE_SECRET_KEY=
 LANGFUSE_HOST=https://langfuse.nexusblue.ai
 ```
 
+### Required Runtime Bootstrap for `withAuditEvent()` / `secureRoute()` audit writes
+
+Wrapping a route with `withAuditEvent()` or `secureRoute()` is necessary but **not sufficient** —
+`audit_events` rows are only actually written if `instrumentation.ts` also calls, in the Node.js
+runtime block, before the first request can be served:
+
+```typescript
+import { initCore } from '@nexusbluedev/core';
+import { configureAuditRuntime } from '@nexusbluedev/core/security';
+import { createServiceClient } from './lib/supabase/server';
+import { after } from 'next/server';
+
+initCore(createServiceClient()); // must target THIS app's own product DB
+configureAuditRuntime({ after });
+```
+
+Confirmed live across multiple projects (`core_decisions` `ba2bf975`, ADR `6421f19d`): omitting
+this causes every audit write to silently no-op — no error, no thrown exception, just a missing
+row. Two independent causes, both closed by the block above: (1) `initCore()` is never called, so
+the shared `getClient()` singleton throws and is swallowed by `emitAuditEvent()`'s warn-once path;
+(2) even with `initCore()` called, Vercel freezes a Lambda's execution environment the instant the
+response is sent, silently abandoning a bare fire-and-forget write unless
+`configureAuditRuntime({ after })` registers Next.js's keep-alive primitive
+(`@nexusbluedev/core` >=1.6.4). See `src/instrumentation.ts` in this template repo for the
+canonical block — copy it into every new project's `instrumentation.ts`, not just the route-level
+wrapper. **Never trust a 200 response as proof an audit row was written — query `audit_events`
+directly.**
+
 ## Version History
 
+- v2.1 (2026-09-08) — Documented the required `instrumentation.ts` bootstrap (`initCore()` +
+  `configureAuditRuntime()`) for `withAuditEvent()`/`secureRoute()` audit writes to actually persist.
+  Closes a documentation gap that let the same silent-no-op bug reproduce independently across
+  several onboarded projects (audit_events 8-repo onboarding program, `nexusblue-application-templates`
+  finding, 2026-09-08).
 - v2.0 (2026-04-12) — Added API Route Security Middleware section. Core security module (`@nexusbluedev/core/security`): secureRoute, withAuditEvent, withRateLimit, withValidation. Governance-enforced via gate rules.
 - v1.0 (2026-03-04) — Initial standard established by BioGate module. STRIDE threat model format, security controls matrix format, penetration test plan template, incident response playbook, access control matrix, data flow security, bias testing framework.
